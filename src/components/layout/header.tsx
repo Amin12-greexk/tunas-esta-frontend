@@ -1,4 +1,3 @@
-// src/components/layout/header.tsx
 'use client';
 
 import { useState } from 'react';
@@ -87,31 +86,35 @@ export function Header({ onMenuClick }: HeaderProps) {
     <motion.header
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md px-4 lg:px-6"
+      className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md px-4 lg:px-6"
     >
-      {/* Mobile menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onMenuClick}
-        className="lg:hidden"
-      >
-        <Menu className="h-5 w-5" />
-        <span className="sr-only">Toggle menu</span>
-      </Button>
+      {/* Left: Mobile menu + Search */}
+      <div className="flex items-center gap-4 flex-1">
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onMenuClick}
+          className="lg:hidden h-9 w-9"
+        >
+          <Menu className="h-5 w-5" />
+          <span className="sr-only">Toggle menu</span>
+        </Button>
 
-      {/* Search */}
-      <div className="flex-1 max-w-md">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
-          <input
-            type="search"
-            placeholder="Cari karyawan, departemen..."
-            className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 pl-9 pr-4 py-2 text-sm focus:border-tunas-blue-500 focus:outline-none focus:ring-2 focus:ring-tunas-blue-500/20"
-          />
-        </div>
+        {/* Search */}
+<div className="flex flex-1 justify-center">
+  <div className="relative w-full max-w-lg">
+    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+    <input
+      type="search"
+      placeholder="Cari karyawan, departemen..."
+      className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 pl-9 pr-4 py-2 text-sm focus:border-tunas-blue-500 focus:outline-none focus:ring-2 focus:ring-tunas-blue-500/20"
+    />
+  </div>
+</div>
       </div>
 
+      {/* Right: Theme, Notifications, User */}
       <div className="flex items-center gap-2">
         {/* Theme toggle */}
         <DropdownMenu>
@@ -159,14 +162,25 @@ export function Header({ onMenuClick }: HeaderProps) {
             <DropdownMenuLabel>Notifikasi</DropdownMenuLabel>
             <DropdownMenuSeparator />
             {notifications.map((notification) => (
-              <DropdownMenuItem key={notification.id} className="flex flex-col items-start p-4">
+              <DropdownMenuItem
+                key={notification.id}
+                className="flex flex-col items-start p-4"
+              >
                 <div className="flex items-center gap-2 w-full">
-                  <div className={cn(
-                    'h-2 w-2 rounded-full',
-                    notification.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500'
-                  )} />
-                  <span className="font-medium text-sm">{notification.title}</span>
-                  <span className="text-xs text-gray-500 ml-auto">{notification.time}</span>
+                  <div
+                    className={cn(
+                      'h-2 w-2 rounded-full',
+                      notification.type === 'warning'
+                        ? 'bg-yellow-500'
+                        : 'bg-green-500'
+                    )}
+                  />
+                  <span className="font-medium text-sm">
+                    {notification.title}
+                  </span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {notification.time}
+                  </span>
                 </div>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                   {notification.message}
@@ -201,7 +215,9 @@ export function Header({ onMenuClick }: HeaderProps) {
                     <p className="text-sm font-medium leading-none">
                       {user.nama_lengkap}
                     </p>
-                    <Badge className={cn('text-xs', getRoleBadgeColor(user.role))}>
+                    <Badge
+                      className={cn('text-xs', getRoleBadgeColor(user.role))}
+                    >
                       {getRoleLabel(user.role)}
                     </Badge>
                   </div>

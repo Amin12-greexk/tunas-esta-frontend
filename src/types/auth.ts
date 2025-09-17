@@ -12,6 +12,10 @@ export interface User {
   pin_fingerprint?: string;
   role_karyawan: 'produksi' | 'staff';
   status: 'Aktif' | 'Resign';
+  // Tambahan
+  nomor_telepon?: string;
+  alamat?: string;
+
 }
 
 export interface LoginCredentials {

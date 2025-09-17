@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
+import { AttendanceChart } from '@/components/charts/attendance-chart';
 import { apiClient } from '@/lib/api';
 import { 
   TrendingUp, 
@@ -48,7 +49,9 @@ export default function DashboardPage() {
   useEffect(() => {
     loadDashboardData();
   }, []);
-
+  <div className="grid gap-6">
+      <AttendanceChart />
+    </div>
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);

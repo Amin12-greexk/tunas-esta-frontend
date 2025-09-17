@@ -32,20 +32,17 @@ import {
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
-import { apiClient } from '@/lib/api';
 import { Karyawan } from '@/types/karyawan';
 import { getStatusColor, formatDate } from '@/lib/utils';
-import { 
-  Plus, 
-  Search, 
-  Filter,
+import {
+  Search,
   MoreHorizontal,
   Eye,
   Edit,
   Trash,
   Download,
   UserPlus,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -67,8 +64,8 @@ export default function KaryawanPage() {
     try {
       setIsLoading(true);
       setError('');
-      
-      // Mock data for now
+
+      // Mock data untuk sementara
       const mockData: Karyawan[] = [
         {
           karyawan_id: 1,
@@ -89,18 +86,18 @@ export default function KaryawanPage() {
           departemen_id_saat_ini: 1,
           jabatan_id_saat_ini: 1,
           role_karyawan: 'produksi',
-          departemenSaatIni: { 
-            departemen_id: 1, 
+          departemenSaatIni: {
+            departemen_id: 1,
             nama_departemen: 'Produksi',
             menggunakan_shift: true,
             created_at: '',
-            updated_at: ''
+            updated_at: '',
           },
-          jabatanSaatIni: { 
-            jabatan_id: 1, 
+          jabatanSaatIni: {
+            jabatan_id: 1,
             nama_jabatan: 'Operator',
             created_at: '',
-            updated_at: ''
+            updated_at: '',
           },
           created_at: '2020-01-01',
           updated_at: '2024-01-01',
@@ -124,24 +121,24 @@ export default function KaryawanPage() {
           departemen_id_saat_ini: 2,
           jabatan_id_saat_ini: 2,
           role_karyawan: 'staff',
-          departemenSaatIni: { 
-            departemen_id: 2, 
+          departemenSaatIni: {
+            departemen_id: 2,
             nama_departemen: 'Human Resources',
             menggunakan_shift: false,
             created_at: '',
-            updated_at: ''
+            updated_at: '',
           },
-          jabatanSaatIni: { 
-            jabatan_id: 2, 
+          jabatanSaatIni: {
+            jabatan_id: 2,
             nama_jabatan: 'HR Manager',
             created_at: '',
-            updated_at: ''
+            updated_at: '',
           },
           created_at: '2019-06-01',
           updated_at: '2024-01-01',
         },
       ];
-      
+
       setKaryawan(mockData);
     } catch (error) {
       console.error('Error loading karyawan:', error);
@@ -153,23 +150,25 @@ export default function KaryawanPage() {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Apakah Anda yakin ingin menghapus karyawan ini?')) return;
-    
+
     try {
-      // await apiClient.deleteKaryawan(id);
-      setKaryawan(karyawan.filter(k => k.karyawan_id !== id));
+      setKaryawan(karyawan.filter((k) => k.karyawan_id !== id));
     } catch (error) {
       console.error('Error deleting karyawan:', error);
       setError('Gagal menghapus karyawan');
     }
   };
 
-  const filteredKaryawan = karyawan.filter(k => {
-    const matchesSearch = k.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         k.nik.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         k.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartemen = !filterDepartemen || k.departemenSaatIni?.nama_departemen === filterDepartemen;
+  const filteredKaryawan = karyawan.filter((k) => {
+    const matchesSearch =
+      k.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      k.nik.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      k.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDepartemen =
+      !filterDepartemen ||
+      k.departemenSaatIni?.nama_departemen === filterDepartemen;
     const matchesStatus = !filterStatus || k.status === filterStatus;
-    
+
     return matchesSearch && matchesDepartemen && matchesStatus;
   });
 
@@ -220,14 +219,19 @@ export default function KaryawanPage() {
 
             {/* Filters */}
             <div className="flex gap-2">
-              <Select value={filterDepartemen} onValueChange={setFilterDepartemen}>
+              <Select
+                value={filterDepartemen}
+                onValueChange={setFilterDepartemen}
+              >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Semua Departemen" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Semua Departemen</SelectItem>
+                  <SelectItem value="all">Semua Departemen</SelectItem>
                   <SelectItem value="Produksi">Produksi</SelectItem>
-                  <SelectItem value="Human Resources">Human Resources</SelectItem>
+                  <SelectItem value="Human Resources">
+                    Human Resources
+                  </SelectItem>
                   <SelectItem value="Finance">Finance</SelectItem>
                 </SelectContent>
               </Select>
@@ -237,7 +241,7 @@ export default function KaryawanPage() {
                   <SelectValue placeholder="Semua Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Semua Status</SelectItem>
+                  <SelectItem value="all">Semua Status</SelectItem>
                   <SelectItem value="Aktif">Aktif</SelectItem>
                   <SelectItem value="Resign">Resign</SelectItem>
                 </SelectContent>
@@ -288,14 +292,18 @@ export default function KaryawanPage() {
                           <p className="text-sm text-gray-500">{k.email}</p>
                         </div>
                       </TableCell>
-                      <TableCell>{k.departemenSaatIni?.nama_departemen}</TableCell>
+                      <TableCell>
+                        {k.departemenSaatIni?.nama_departemen}
+                      </TableCell>
                       <TableCell>{k.jabatanSaatIni?.nama_jabatan}</TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(k.status)}>
                           {k.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{formatDate(k.tanggal_masuk, 'dd MMM yyyy')}</TableCell>
+                      <TableCell>
+                        {formatDate(k.tanggal_masuk, 'dd MMM yyyy')}
+                      </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -339,5 +347,5 @@ export default function KaryawanPage() {
         </CardContent>
       </Card>
     </DashboardLayout>
-    );
+  );
 }

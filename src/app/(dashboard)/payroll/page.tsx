@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { AttendanceChart } from '@/components/charts/attendance-chart';
+import { PayrollChart } from '@/components/charts/payroll-chart';
 import {
   Table,
   TableBody,
@@ -335,16 +337,16 @@ export default function PayrollPage() {
                 </Select>
 
                 <Select value={filterDepartemen} onValueChange={setFilterDepartemen}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Semua Departemen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Semua Departemen</SelectItem>
-                    <SelectItem value="Produksi">Produksi</SelectItem>
-                    <SelectItem value="Human Resources">Human Resources</SelectItem>
-                    <SelectItem value="Finance">Finance</SelectItem>
-                  </SelectContent>
-                </Select>
+  <SelectTrigger className="w-[180px]">
+    <SelectValue placeholder="Pilih Departemen" />
+  </SelectTrigger>
+  <SelectContent>
+    <SelectItem value="all">Semua Departemen</SelectItem>
+    <SelectItem value="Produksi">Produksi</SelectItem>
+    <SelectItem value="Human Resources">Human Resources</SelectItem>
+    <SelectItem value="Finance">Finance</SelectItem>
+  </SelectContent>
+</Select>
 
                 <Button variant="outline">
                   <Download className="h-4 w-4 mr-2" />
