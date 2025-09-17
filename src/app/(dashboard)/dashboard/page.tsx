@@ -6,7 +6,6 @@ import { motion } from 'framer-motion';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { PageHeader } from '@/components/common/page-header';
 import { DashboardStats } from '@/components/dashboard/stats-cards';
-import { RecentActivities } from '@/components/dashboard/recent-activities';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
@@ -200,7 +199,6 @@ export default function DashboardPage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
         >
-          <RecentActivities activities={activities} />
         </motion.div>
 
         {/* Today's Summary */}

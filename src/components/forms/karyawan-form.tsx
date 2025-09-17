@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { karyawanSchema, type KaryawanFormData } from '@/lib/validation/karyawan';
+import { karyawanSchema, type KaryawanFormData } from '@/lib/validation';
 import { apiClient, handleApiError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
