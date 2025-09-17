@@ -3,6 +3,7 @@
 
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import Image from 'next/image'; // <-- Impor komponen Image
 
 interface LogoProps {
   className?: string;
@@ -13,21 +14,9 @@ interface LogoProps {
 
 export function Logo({ className, showText = true, variant = 'default', size = 'md' }: LogoProps) {
   const sizeClasses = {
-    sm: 'h-8 w-8',
-    md: 'h-10 w-10',
-    lg: 'h-12 w-12',
-  };
-
-  const textSizeClasses = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-2xl',
-  };
-
-  const logoColors = {
-    default: 'tunas-gradient',
-    white: 'bg-white',
-    dark: 'bg-gray-900',
+    sm: { container: 'h-8 w-8', text: 'text-lg' },
+    md: { container: 'h-10 w-10', text: 'text-xl' },
+    lg: { container: 'h-12 w-12', text: 'text-2xl' },
   };
 
   return (
@@ -37,18 +26,20 @@ export function Logo({ className, showText = true, variant = 'default', size = '
       transition={{ duration: 0.5 }}
       className={cn('flex items-center gap-3', className)}
     >
+      {/* Bagian ini diganti dari div menjadi komponen Image */}
       <motion.div
-        whileHover={{ scale: 1.05 }}
+        whileHover={{ scale: 1.05, rotate: 5 }}
         whileTap={{ scale: 0.95 }}
-        className={cn(
-          'rounded-xl flex items-center justify-center text-white font-bold',
-          sizeClasses[size],
-          logoColors[variant]
-        )}
+        className={cn('relative', sizeClasses[size].container)}
       >
-        <span className={cn('font-display', textSizeClasses[size])}>
-          T
-        </span>
+        <Image
+          src="/logo.png" // <-- Ganti dengan nama file gambar Anda
+          alt="Tunas Esta Indonesia Logo"
+          fill
+          style={{ objectFit: 'contain' }}
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          priority
+        />
       </motion.div>
       
       {showText && (
@@ -61,7 +52,7 @@ export function Logo({ className, showText = true, variant = 'default', size = '
           <span className={cn(
             'font-display font-bold leading-none',
             variant === 'white' ? 'text-white' : 'text-gray-900 dark:text-white',
-            textSizeClasses[size]
+            sizeClasses[size].text
           )}>
             Tunas Esta
           </span>
