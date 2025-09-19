@@ -156,7 +156,7 @@ export default function DashboardPage() {
 
       {/* Stats Cards */}
       <DashboardStats stats={stats} />
-        
+      
       {/* Quick Actions */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
