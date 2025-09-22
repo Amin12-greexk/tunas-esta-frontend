@@ -1,7 +1,7 @@
 // src/app/(dashboard)/karyawan/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { PageHeader } from '@/components/common/page-header';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -34,6 +34,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
 import { Karyawan } from '@/types/karyawan';
 import { getStatusColor, formatDate } from '@/lib/utils';
+import { apiClient, handleApiError } from '@/lib/api';
 import {
   Search,
   MoreHorizontal,
@@ -47,130 +48,92 @@ import {
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 
+type DepartemenOpt = { value: string; label: string };
+
 export default function KaryawanPage() {
   const { hasPermission } = useAuth();
   const [karyawan, setKaryawan] = useState<Karyawan[]>([]);
+  const [departemenOptions, setDepartemenOptions] = useState<DepartemenOpt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDepartemen, setFilterDepartemen] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDepartemen, setFilterDepartemen] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   useEffect(() => {
-    loadKaryawan();
+    (async () => {
+      await Promise.all([loadKaryawan(), loadDepartemen()]);
+    })();
   }, []);
 
   const loadKaryawan = async () => {
     try {
       setIsLoading(true);
       setError('');
-
-      // Mock data untuk sementara
-      const mockData: Karyawan[] = [
-        {
-          karyawan_id: 1,
-          nik: 'NK001',
-          nama_lengkap: 'John Doe',
-          tempat_lahir: 'Jakarta',
-          tanggal_lahir: '1990-01-01',
-          jenis_kelamin: 'Laki-laki',
-          alamat: 'Jl. Contoh No. 1',
-          status_perkawinan: 'Menikah',
-          nomor_telepon: '081234567890',
-          email: 'john.doe@tunasesta.com',
-          role: 'karyawan',
-          tanggal_masuk: '2020-01-01',
-          kategori_gaji: 'Bulanan',
-          periode_gaji: 'bulanan',
-          status: 'Aktif',
-          departemen_id_saat_ini: 1,
-          jabatan_id_saat_ini: 1,
-          role_karyawan: 'produksi',
-          departemenSaatIni: {
-            departemen_id: 1,
-            nama_departemen: 'Produksi',
-            menggunakan_shift: true,
-            created_at: '',
-            updated_at: '',
-          },
-          jabatanSaatIni: {
-            jabatan_id: 1,
-            nama_jabatan: 'Operator',
-            created_at: '',
-            updated_at: '',
-          },
-          created_at: '2020-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          karyawan_id: 2,
-          nik: 'NK002',
-          nama_lengkap: 'Jane Smith',
-          tempat_lahir: 'Bandung',
-          tanggal_lahir: '1992-05-15',
-          jenis_kelamin: 'Perempuan',
-          alamat: 'Jl. Sample No. 2',
-          status_perkawinan: 'Belum Menikah',
-          nomor_telepon: '081234567891',
-          email: 'jane.smith@tunasesta.com',
-          role: 'hr',
-          tanggal_masuk: '2019-06-01',
-          kategori_gaji: 'Bulanan',
-          periode_gaji: 'bulanan',
-          status: 'Aktif',
-          departemen_id_saat_ini: 2,
-          jabatan_id_saat_ini: 2,
-          role_karyawan: 'staff',
-          departemenSaatIni: {
-            departemen_id: 2,
-            nama_departemen: 'Human Resources',
-            menggunakan_shift: false,
-            created_at: '',
-            updated_at: '',
-          },
-          jabatanSaatIni: {
-            jabatan_id: 2,
-            nama_jabatan: 'HR Manager',
-            created_at: '',
-            updated_at: '',
-          },
-          created_at: '2019-06-01',
-          updated_at: '2024-01-01',
-        },
-      ];
-
-      setKaryawan(mockData);
-    } catch (error) {
-      console.error('Error loading karyawan:', error);
-      setError('Gagal memuat data karyawan');
+      const res = await apiClient.getKaryawan();
+      const data = Array.isArray(res.data) ? res.data : [];
+      setKaryawan(data);
+    } catch (e: any) {
+      setError(handleApiError(e) || 'Gagal memuat data karyawan');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus karyawan ini?')) return;
-
+  const loadDepartemen = async () => {
     try {
-      setKaryawan(karyawan.filter((k) => k.karyawan_id !== id));
-    } catch (error) {
-      console.error('Error deleting karyawan:', error);
-      setError('Gagal menghapus karyawan');
+      const res = await apiClient.getDepartemen();
+      const opts: DepartemenOpt[] = [
+        { value: 'all', label: 'Semua Departemen' },
+        ...(Array.isArray(res.data)
+          ? res.data.map((d: any) => ({
+              value: String(d.nama_departemen),
+              label: d.nama_departemen,
+            }))
+          : []),
+      ];
+      setDepartemenOptions(opts);
+    } catch {
+      setDepartemenOptions([{ value: 'all', label: 'Semua Departemen' }]);
     }
   };
 
-  const filteredKaryawan = karyawan.filter((k) => {
-    const matchesSearch =
-      k.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.nik.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartemen =
-      !filterDepartemen ||
-      k.departemenSaatIni?.nama_departemen === filterDepartemen;
-    const matchesStatus = !filterStatus || k.status === filterStatus;
+  const handleDelete = async (id: number) => {
+    const ok = confirm('Apakah Anda yakin ingin menghapus karyawan ini?');
+    if (!ok) return;
 
-    return matchesSearch && matchesDepartemen && matchesStatus;
-  });
+    try {
+      setDeletingId(id);
+      await apiClient.deleteKaryawan(id);
+      setKaryawan((prev) => prev.filter((k) => k.karyawan_id !== id));
+    } catch (e: any) {
+      setError(handleApiError(e) || 'Gagal menghapus karyawan');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const filteredKaryawan = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+    return karyawan.filter((k) => {
+      const matchesSearch =
+        !term ||
+        k.nama_lengkap.toLowerCase().includes(term) ||
+        k.nik.toLowerCase().includes(term) ||
+        (k.email || '').toLowerCase().includes(term);
+
+      const matchesDepartemen =
+        filterDepartemen === 'all' ||
+        k.departemenSaatIni?.nama_departemen === filterDepartemen;
+
+      const matchesStatus =
+        filterStatus === 'all' ||
+        (k.status || '').toLowerCase() === filterStatus.toLowerCase();
+
+      return matchesSearch && matchesDepartemen && matchesStatus;
+    });
+  }, [karyawan, searchTerm, filterDepartemen, filterStatus]);
 
   const breadcrumbs = [
     { label: 'Dashboard', href: '/dashboard' },
@@ -219,35 +182,32 @@ export default function KaryawanPage() {
 
             {/* Filters */}
             <div className="flex gap-2">
-              <Select
-                value={filterDepartemen}
-                onValueChange={setFilterDepartemen}
-              >
-                <SelectTrigger className="w-[180px]">
+              <Select value={filterDepartemen} onValueChange={setFilterDepartemen}>
+                <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Semua Departemen" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Semua Departemen</SelectItem>
-                  <SelectItem value="Produksi">Produksi</SelectItem>
-                  <SelectItem value="Human Resources">
-                    Human Resources
-                  </SelectItem>
-                  <SelectItem value="Finance">Finance</SelectItem>
+                  {departemenOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
 
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="Semua Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Status</SelectItem>
                   <SelectItem value="Aktif">Aktif</SelectItem>
                   <SelectItem value="Resign">Resign</SelectItem>
+                  <SelectItem value="Cuti">Cuti</SelectItem>
                 </SelectContent>
               </Select>
 
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="icon" title="Export (coming soon)">
                 <Download className="h-4 w-4" />
               </Button>
             </div>
@@ -292,17 +252,13 @@ export default function KaryawanPage() {
                           <p className="text-sm text-gray-500">{k.email}</p>
                         </div>
                       </TableCell>
+                      <TableCell>{k.departemenSaatIni?.nama_departemen || '-'}</TableCell>
+                      <TableCell>{k.jabatanSaatIni?.nama_jabatan || '-'}</TableCell>
                       <TableCell>
-                        {k.departemenSaatIni?.nama_departemen}
-                      </TableCell>
-                      <TableCell>{k.jabatanSaatIni?.nama_jabatan}</TableCell>
-                      <TableCell>
-                        <Badge className={getStatusColor(k.status)}>
-                          {k.status}
-                        </Badge>
+                        <Badge className={getStatusColor(k.status)}>{k.status}</Badge>
                       </TableCell>
                       <TableCell>
-                        {formatDate(k.tanggal_masuk, 'dd MMM yyyy')}
+                        {k.tanggal_masuk ? formatDate(k.tanggal_masuk, 'dd MMM yyyy') : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         <DropdownMenu>
@@ -331,8 +287,17 @@ export default function KaryawanPage() {
                                 className="text-red-600"
                                 onClick={() => handleDelete(k.karyawan_id)}
                               >
-                                <Trash className="mr-2 h-4 w-4" />
-                                Hapus
+                                {deletingId === k.karyawan_id ? (
+                                  <>
+                                    <LoadingSpinner size="sm" />
+                                    <span className="ml-2">Menghapus...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash className="mr-2 h-4 w-4" />
+                                    Hapus
+                                  </>
+                                )}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>

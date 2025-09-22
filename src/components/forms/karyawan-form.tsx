@@ -30,27 +30,20 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { 
-  User, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar,
-  Building2,
-  Briefcase,
-  CreditCard,
-  Clock,
-  Save,
-  X
-} from 'lucide-react';
+import { Save, X } from 'lucide-react';
 import { Departemen, Jabatan } from '@/types/master-data';
 import { Karyawan } from '@/types/karyawan';
 
 interface KaryawanFormProps {
-  karyawan?: Karyawan;
+  karyawan?: Karyawan;       // untuk mode edit, kirim data awal dari page
   mode: 'create' | 'edit';
+}
+
+function toHHmmss(v?: string) {
+  if (!v) return null;
+  // input time HTML → "HH:mm", backend (umumnya) "HH:mm:ss"
+  return v.length === 5 ? `${v}:00` : v;
 }
 
 export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
@@ -66,20 +59,44 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
       nama_lengkap: karyawan?.nama_lengkap || '',
       tempat_lahir: karyawan?.tempat_lahir || '',
       tanggal_lahir: karyawan?.tanggal_lahir || '',
-      jenis_kelamin: karyawan?.jenis_kelamin || 'Laki-laki',
+      jenis_kelamin: (karyawan?.jenis_kelamin as any) || 'Laki-laki',
       alamat: karyawan?.alamat || '',
-      status_perkawinan: karyawan?.status_perkawinan || 'Belum Menikah',
+      status_perkawinan: (karyawan?.status_perkawinan as any) || 'Belum Menikah',
       nomor_telepon: karyawan?.nomor_telepon || '',
       email: karyawan?.email || '',
       tanggal_masuk: karyawan?.tanggal_masuk || '',
-      kategori_gaji: karyawan?.kategori_gaji || 'Bulanan',
+      status: (karyawan?.status as any) || 'Aktif',
+      kategori_gaji: (karyawan?.kategori_gaji as any) || 'Bulanan',
       departemen_id_saat_ini: karyawan?.departemen_id_saat_ini || 0,
       jabatan_id_saat_ini: karyawan?.jabatan_id_saat_ini || 0,
-      role_karyawan: karyawan?.role_karyawan || 'produksi',
-      jam_kerja_masuk: karyawan?.jam_kerja_masuk || '08:00',
-      jam_kerja_pulang: karyawan?.jam_kerja_pulang || '17:00',
+      role_karyawan: (karyawan?.role_karyawan as any) || 'produksi',
+      jam_kerja_masuk: (karyawan?.jam_kerja_masuk || '08:00').slice(0, 5),
+      jam_kerja_pulang: (karyawan?.jam_kerja_pulang || '17:00').slice(0, 5),
     },
   });
+
+  // Jika prop karyawan berubah (mis. setelah fetch di page edit), sync ke form
+  useEffect(() => {
+    if (!karyawan) return;
+    form.reset({
+      nik: karyawan.nik || '',
+      nama_lengkap: karyawan.nama_lengkap || '',
+      tempat_lahir: karyawan.tempat_lahir || '',
+      tanggal_lahir: karyawan.tanggal_lahir || '',
+      jenis_kelamin: (karyawan.jenis_kelamin as any) || 'Laki-laki',
+      alamat: karyawan.alamat || '',
+      status_perkawinan: (karyawan.status_perkawinan as any) || 'Belum Menikah',
+      nomor_telepon: karyawan.nomor_telepon || '',
+      email: karyawan.email || '',
+      tanggal_masuk: karyawan.tanggal_masuk || '',
+      kategori_gaji: (karyawan.kategori_gaji as any) || 'Bulanan',
+      departemen_id_saat_ini: karyawan.departemen_id_saat_ini || 0,
+      jabatan_id_saat_ini: karyawan.jabatan_id_saat_ini || 0,
+      role_karyawan: (karyawan.role_karyawan as any) || 'produksi',
+      jam_kerja_masuk: (karyawan.jam_kerja_masuk || '08:00').slice(0, 5),
+      jam_kerja_pulang: (karyawan.jam_kerja_pulang || '17:00').slice(0, 5),
+    });
+  }, [karyawan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadMasterData();
@@ -87,54 +104,53 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
 
   const loadMasterData = async () => {
     try {
-      // Load departemen and jabatan
-      // const [depResponse, jabResponse] = await Promise.all([
-      //   apiClient.getDepartemen(),
-      //   apiClient.getJabatan(),
-      // ]);
-      // setDepartemenList(depResponse.data);
-      // setJabatanList(jabResponse.data);
-
-      // Mock data for now
-      setDepartemenList([
-        { departemen_id: 1, nama_departemen: 'Produksi', menggunakan_shift: true, created_at: '', updated_at: '' },
-        { departemen_id: 2, nama_departemen: 'Human Resources', menggunakan_shift: false, created_at: '', updated_at: '' },
-        { departemen_id: 3, nama_departemen: 'Finance', menggunakan_shift: false, created_at: '', updated_at: '' },
+      const [depResponse, jabResponse] = await Promise.all([
+        apiClient.getDepartemen(),
+        apiClient.getJabatan(),
       ]);
-      setJabatanList([
-        { jabatan_id: 1, nama_jabatan: 'Operator', created_at: '', updated_at: '' },
-        { jabatan_id: 2, nama_jabatan: 'Manager', created_at: '', updated_at: '' },
-        { jabatan_id: 3, nama_jabatan: 'Staff', created_at: '', updated_at: '' },
-      ]);
+      setDepartemenList(Array.isArray(depResponse.data) ? depResponse.data : []);
+      setJabatanList(Array.isArray(jabResponse.data) ? jabResponse.data : []);
     } catch (error) {
-      console.error('Error loading master data:', error);
+      toast({
+        title: 'Gagal memuat master data',
+        description: handleApiError(error) || 'Periksa koneksi dan izin akses Anda.',
+        variant: 'destructive',
+      });
     }
   };
 
   const onSubmit = async (data: KaryawanFormData) => {
     try {
       setIsLoading(true);
-      
+
+      // Siapkan payload sesuai backend (jam ke HH:mm:ss, string kosong jadi null)
+      const payload = {
+        ...data,
+        email: data.email?.trim() || null,
+        nomor_telepon: data.nomor_telepon?.trim() || null,
+        tanggal_lahir: data.tanggal_lahir || null,
+        tanggal_masuk: data.tanggal_masuk || null,
+        departemen_id_saat_ini: data.departemen_id_saat_ini || null,
+        jabatan_id_saat_ini: data.jabatan_id_saat_ini || null,
+        jam_kerja_masuk: toHHmmss(data.jam_kerja_masuk),
+        jam_kerja_pulang: toHHmmss(data.jam_kerja_pulang),
+      };
+
       if (mode === 'create') {
-        // await apiClient.createKaryawan(data);
-        toast({
-          title: 'Berhasil',
-          description: 'Karyawan berhasil ditambahkan',
-        });
+        await apiClient.createKaryawan(payload);
+        toast({ title: 'Berhasil', description: 'Karyawan berhasil ditambahkan' });
+      } else if (mode === 'edit' && karyawan?.karyawan_id) {
+        await apiClient.updateKaryawan(karyawan.karyawan_id, payload);
+        toast({ title: 'Berhasil', description: 'Data karyawan berhasil diperbarui' });
       } else {
-        // await apiClient.updateKaryawan(karyawan!.karyawan_id, data);
-        toast({
-          title: 'Berhasil',
-          description: 'Data karyawan berhasil diperbarui',
-        });
+        throw new Error('Mode edit membutuhkan karyawan_id');
       }
-      
+
       router.push('/karyawan');
     } catch (error: any) {
-      const errorMessage = handleApiError(error);
       toast({
         title: 'Error',
-        description: errorMessage,
+        description: handleApiError(error) || 'Gagal menyimpan karyawan',
         variant: 'destructive',
       });
     } finally {
@@ -152,7 +168,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
             <TabsTrigger value="payroll">Penggajian</TabsTrigger>
           </TabsList>
 
-          {/* Personal Data Tab */}
+          {/* Personal Data */}
           <TabsContent value="personal">
             <Card>
               <CardHeader>
@@ -222,7 +238,10 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Jenis Kelamin</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Pilih jenis kelamin" />
@@ -244,7 +263,10 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Status Perkawinan</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Pilih status" />
@@ -307,7 +329,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
             </Card>
           </TabsContent>
 
-          {/* Employment Tab */}
+          {/* Employment */}
           <TabsContent value="employment">
             <Card>
               <CardHeader>
@@ -335,7 +357,10 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Role Karyawan</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Pilih role" />
@@ -357,9 +382,9 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Departemen</FormLabel>
-                        <Select 
-                          onValueChange={(value) => field.onChange(parseInt(value))} 
-                          defaultValue={field.value?.toString()}
+                        <Select
+                          value={String(field.value || '')}
+                          onValueChange={(value) => field.onChange(Number(value))}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -368,7 +393,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                           </FormControl>
                           <SelectContent>
                             {departemenList.map((dept) => (
-                              <SelectItem key={dept.departemen_id} value={dept.departemen_id.toString()}>
+                              <SelectItem key={dept.departemen_id} value={String(dept.departemen_id)}>
                                 {dept.nama_departemen}
                               </SelectItem>
                             ))}
@@ -385,9 +410,9 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Jabatan</FormLabel>
-                        <Select 
-                          onValueChange={(value) => field.onChange(parseInt(value))} 
-                          defaultValue={field.value?.toString()}
+                        <Select
+                          value={String(field.value || '')}
+                          onValueChange={(value) => field.onChange(Number(value))}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -396,7 +421,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                           </FormControl>
                           <SelectContent>
                             {jabatanList.map((jab) => (
-                              <SelectItem key={jab.jabatan_id} value={jab.jabatan_id.toString()}>
+                              <SelectItem key={jab.jabatan_id} value={String(jab.jabatan_id)}>
                                 {jab.nama_jabatan}
                               </SelectItem>
                             ))}
@@ -439,7 +464,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
             </Card>
           </TabsContent>
 
-          {/* Payroll Tab */}
+          {/* Payroll */}
           <TabsContent value="payroll">
             <Card>
               <CardHeader>
@@ -452,7 +477,10 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Kategori Gaji</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Pilih kategori gaji" />
@@ -476,7 +504,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
           </TabsContent>
         </Tabs>
 
-        {/* Action Buttons */}
+        {/* Actions */}
         <div className="flex justify-end gap-4">
           <Button
             type="button"

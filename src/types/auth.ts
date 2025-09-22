@@ -1,4 +1,6 @@
 // src/types/auth.ts
+import { Departemen, Jabatan } from './master-data';
+
 export interface User {
   karyawan_id: number;
   nik: string;
@@ -12,10 +14,8 @@ export interface User {
   pin_fingerprint?: string;
   role_karyawan: 'produksi' | 'staff';
   status: 'Aktif' | 'Resign';
-  // Tambahan
   nomor_telepon?: string;
   alamat?: string;
-
 }
 
 export interface LoginCredentials {
@@ -28,3 +28,16 @@ export interface AuthResponse {
   token_type: string;
   user: User;
 }
+
+export type Permission = 
+  | 'view-any-karyawan'
+  | 'view-karyawan'
+  | 'create-karyawan'
+  | 'update-karyawan'
+  | 'delete-karyawan'
+  | 'manage-master-data'
+  | 'view-master-data'
+  | 'process-payroll'
+  | 'approve-payroll'
+  | 'view-any-slip'
+  | 'view-own-slip';

@@ -116,6 +116,12 @@ export const apiClient = {
   getAbsensiByKaryawan: (karyawanId: number, params?: any) => 
     api.get(`/absensi/karyawan/${karyawanId}`, { params }),
 
+  updateAbsensi: (id: number, data: any) => 
+    api.put(`/absensi/${id}`, data),
+
+  getAbsensiSummary: (periode: string) => 
+    api.get(`/absensi/summary/${periode}`),
+
   // Fingerprint
   processLogs: () => 
     api.post('/fingerprint/process-logs'),
@@ -135,6 +141,12 @@ export const apiClient = {
   
   getSlipGaji: (gajiId: number) => 
     api.get(`/payroll/slip/${gajiId}`),
+
+  getAllPayrolls: (params?: any) => 
+    api.get('/payroll/all', { params }),
+
+  bulkGeneratePayroll: (data: { periode: string; karyawan_ids: number[] }) => 
+    api.post('/payroll/bulk-generate', data),
 
   // Setting Gaji
   getSettingGaji: () => 

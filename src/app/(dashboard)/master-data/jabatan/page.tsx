@@ -30,7 +30,7 @@ import {
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { apiClient, handleApiError } from '@/lib/api';
 import { Jabatan } from '@/types/master-data';
 import { 
   Plus, 
@@ -43,17 +43,23 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+type JabatanForm = {
+  nama_jabatan: string;
+};
+
 export default function JabatanPage() {
   const [jabatan, setJabatan] = useState<Jabatan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedJabatan, setSelectedJabatan] = useState<Jabatan | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<JabatanForm>({
     nama_jabatan: '',
   });
 
@@ -65,138 +71,109 @@ export default function JabatanPage() {
     try {
       setIsLoading(true);
       setError('');
-      
-      // Mock data for now
-      const mockData: Jabatan[] = [
-        {
-          jabatan_id: 1,
-          nama_jabatan: 'Direktur',
-          karyawan_count: 1,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          jabatan_id: 2,
-          nama_jabatan: 'Manager',
-          karyawan_count: 5,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          jabatan_id: 3,
-          nama_jabatan: 'Supervisor',
-          karyawan_count: 12,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          jabatan_id: 4,
-          nama_jabatan: 'Staff',
-          karyawan_count: 45,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          jabatan_id: 5,
-          nama_jabatan: 'Operator',
-          karyawan_count: 78,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          jabatan_id: 6,
-          nama_jabatan: 'Helper',
-          karyawan_count: 15,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-      ];
-      
-      setJabatan(mockData);
-    } catch (error) {
-      console.error('Error loading jabatan:', error);
-      setError('Gagal memuat data jabatan');
+      const res = await apiClient.getJabatan();
+      const data = Array.isArray(res.data) ? res.data : [];
+      setJabatan(
+        data.map((j: any) => ({
+          ...j,
+          karyawan_count: typeof j.karyawan_count === 'number' ? j.karyawan_count : 0,
+        }))
+      );
+    } catch (e: any) {
+      const msg = handleApiError(e);
+      setError(msg || 'Gagal memuat data jabatan');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      if (!formData.nama_jabatan.trim()) {
-        toast({
-          title: 'Error',
-          description: 'Nama jabatan harus diisi',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      if (editMode && selectedJabatan) {
-        // await apiClient.updateJabatan(selectedJabatan.jabatan_id, formData);
-        toast({
-          title: 'Berhasil',
-          description: 'Jabatan berhasil diperbarui',
-        });
-      } else {
-        // await apiClient.createJabatan(formData);
-        toast({
-          title: 'Berhasil',
-          description: 'Jabatan berhasil ditambahkan',
-        });
-      }
-      
-      setDialogOpen(false);
-      resetForm();
-      loadJabatan();
-    } catch (error) {
-      console.error('Error saving jabatan:', error);
+  const validateForm = () => {
+    if (!formData.nama_jabatan.trim()) {
       toast({
-        title: 'Error',
-        description: 'Gagal menyimpan jabatan',
+        title: 'Validasi',
+        description: 'Nama jabatan wajib diisi',
         variant: 'destructive',
       });
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) return;
+
+    try {
+      setSaving(true);
+
+      if (editMode && selectedJabatan) {
+        await apiClient.updateJabatan(selectedJabatan.jabatan_id, {
+          nama_jabatan: formData.nama_jabatan.trim(),
+        });
+        toast({ title: 'Berhasil', description: 'Jabatan berhasil diperbarui' });
+      } else {
+        await apiClient.createJabatan({
+          nama_jabatan: formData.nama_jabatan.trim(),
+        });
+        toast({ title: 'Berhasil', description: 'Jabatan berhasil ditambahkan' });
+      }
+
+      setDialogOpen(false);
+      resetForm();
+      await loadJabatan();
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: handleApiError(e) || 'Gagal menyimpan jabatan',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleEdit = (jab: Jabatan) => {
     setSelectedJabatan(jab);
-    setFormData({
-      nama_jabatan: jab.nama_jabatan,
-    });
+    setFormData({ nama_jabatan: jab.nama_jabatan });
     setEditMode(true);
     setDialogOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus jabatan ini?')) return;
-    
-    try {
-      // await apiClient.deleteJabatan(id);
-      setJabatan(jabatan.filter(j => j.jabatan_id !== id));
+  const handleDelete = async (id: number, karyawanCount: number = 0) => {
+    if (karyawanCount > 0) {
       toast({
-        title: 'Berhasil',
-        description: 'Jabatan berhasil dihapus',
-      });
-    } catch (error) {
-      console.error('Error deleting jabatan:', error);
-      toast({
-        title: 'Error',
-        description: 'Gagal menghapus jabatan',
+        title: 'Tidak dapat menghapus',
+        description: 'Jabatan masih memiliki karyawan terhubung',
         variant: 'destructive',
       });
+      return;
+    }
+
+    const ok = confirm('Apakah Anda yakin ingin menghapus jabatan ini?');
+    if (!ok) return;
+
+    try {
+      setDeletingId(id);
+      await apiClient.deleteJabatan(id);
+      setJabatan(prev => prev.filter(j => j.jabatan_id !== id));
+      toast({ title: 'Berhasil', description: 'Jabatan berhasil dihapus' });
+    } catch (e: any) {
+      toast({
+        title: 'Error',
+        description: handleApiError(e) || 'Gagal menghapus jabatan',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const resetForm = () => {
-    setFormData({
-      nama_jabatan: '',
-    });
+    setFormData({ nama_jabatan: '' });
     setSelectedJabatan(null);
     setEditMode(false);
   };
 
-  const filteredJabatan = jabatan.filter(j => 
+  const filteredJabatan = jabatan.filter(j =>
     j.nama_jabatan.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -216,7 +193,10 @@ export default function JabatanPage() {
           description="Kelola data jabatan karyawan"
           breadcrumbs={breadcrumbs}
           action={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) resetForm();
+            }}>
               <DialogTrigger asChild>
                 <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -225,14 +205,12 @@ export default function JabatanPage() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>
-                    {editMode ? 'Edit Jabatan' : 'Tambah Jabatan Baru'}
-                  </DialogTitle>
+                  <DialogTitle>{editMode ? 'Edit Jabatan' : 'Tambah Jabatan Baru'}</DialogTitle>
                   <DialogDescription>
                     Lengkapi formulir untuk {editMode ? 'mengubah' : 'menambah'} jabatan
                   </DialogDescription>
                 </DialogHeader>
-                
+
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="nama">Nama Jabatan</Label>
@@ -245,13 +223,13 @@ export default function JabatanPage() {
                     />
                   </div>
                 </div>
-                
+
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>
                     Batal
                   </Button>
-                  <Button onClick={handleSubmit}>
-                    {editMode ? 'Simpan Perubahan' : 'Tambah Jabatan'}
+                  <Button onClick={handleSubmit} disabled={saving}>
+                    {saving ? 'Menyimpan...' : (editMode ? 'Simpan Perubahan' : 'Tambah Jabatan')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -353,7 +331,7 @@ export default function JabatanPage() {
                     const percentage = totalKaryawan > 0 
                       ? ((jab.karyawan_count || 0) / totalKaryawan * 100).toFixed(1)
                       : '0';
-                    
+
                     return (
                       <motion.tr
                         key={jab.jabatan_id}
@@ -369,14 +347,12 @@ export default function JabatanPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">
-                            {jab.karyawan_count || 0} orang
-                          </Badge>
+                          <Badge variant="secondary">{jab.karyawan_count || 0} orang</Badge>
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
-                              <div 
+                              <div
                                 className="bg-tunas-blue-500 h-2 rounded-full transition-all duration-500"
                                 style={{ width: `${percentage}%` }}
                               />
@@ -390,17 +366,23 @@ export default function JabatanPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleEdit(jab)}
+                              title="Edit"
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => handleDelete(jab.jabatan_id)}
+                              onClick={() => handleDelete(jab.jabatan_id, jab.karyawan_count || 0)}
                               className="text-red-600 hover:text-red-700"
-                              disabled={(jab.karyawan_count || 0) > 0}
+                              disabled={deletingId === jab.jabatan_id || (jab.karyawan_count || 0) > 0}
+                              title={(jab.karyawan_count || 0) > 0 ? 'Tidak bisa hapus, masih dipakai' : 'Hapus'}
                             >
-                              <Trash className="h-4 w-4" />
+                              {deletingId === jab.jabatan_id ? (
+                                <LoadingSpinner size="sm" />
+                              ) : (
+                                <Trash className="h-4 w-4" />
+                              )}
                             </Button>
                           </div>
                         </TableCell>

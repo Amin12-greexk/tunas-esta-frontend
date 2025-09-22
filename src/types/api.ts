@@ -1,6 +1,7 @@
+// src/types/api.ts
 export interface ApiResponse<T = any> {
   data?: T;
-  message: string;
+  message?: string;
   errors?: Record<string, string[]>;
 }
 

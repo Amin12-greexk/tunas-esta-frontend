@@ -1,3 +1,4 @@
+// src/types/dashboard.ts
 export interface DashboardStats {
   total_karyawan: number;
   karyawan_aktif: number;

@@ -33,6 +33,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 import { Shift } from '@/types/master-data';
 import { formatTime } from '@/lib/utils';
+import { apiClient, handleApiError } from '@/lib/api';
 import {
   Plus,
   Edit,
@@ -46,16 +47,25 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+type ShiftForm = {
+  kode_shift: string;
+  jam_masuk: string;   // "HH:mm"
+  jam_pulang: string;  // "HH:mm"
+  hari_berikutnya: boolean;
+};
+
 export default function ShiftPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
 
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ShiftForm>({
     kode_shift: '',
     jam_masuk: '',
     jam_pulang: '',
@@ -70,89 +80,72 @@ export default function ShiftPage() {
     try {
       setIsLoading(true);
       setError('');
-
-      // Mock data
-      const mockData: Shift[] = [
-        {
-          shift_id: 1,
-          kode_shift: 'PAGI',
-          jam_masuk: '07:00:00',
-          jam_pulang: '15:00:00',
-          hari_berikutnya: false,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          shift_id: 2,
-          kode_shift: 'SIANG',
-          jam_masuk: '15:00:00',
-          jam_pulang: '23:00:00',
-          hari_berikutnya: false,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          shift_id: 3,
-          kode_shift: 'MALAM',
-          jam_masuk: '23:00:00',
-          jam_pulang: '07:00:00',
-          hari_berikutnya: true,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          shift_id: 4,
-          kode_shift: 'NORMAL',
-          jam_masuk: '08:00:00',
-          jam_pulang: '17:00:00',
-          hari_berikutnya: false,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-      ];
-
-      setShifts(mockData);
-    } catch (error) {
-      console.error('Error loading shifts:', error);
-      setError('Gagal memuat data shift');
+      const res = await apiClient.getShift();
+      const data = Array.isArray(res.data) ? res.data : [];
+      setShifts(
+        data.map((s: any) => ({
+          ...s,
+          jam_masuk: s.jam_masuk ?? null,
+          jam_pulang: s.jam_pulang ?? null,
+          hari_berikutnya: !!s.hari_berikutnya,
+        }))
+      );
+    } catch (e: any) {
+      setError(handleApiError(e) || 'Gagal memuat data shift');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const validateForm = () => {
+    if (!formData.kode_shift.trim()) {
+      toast({ title: 'Validasi', description: 'Kode shift wajib diisi', variant: 'destructive' });
+      return false;
+    }
+    if (formData.jam_masuk && !/^\d{2}:\d{2}$/.test(formData.jam_masuk)) {
+      toast({ title: 'Validasi', description: 'Format jam masuk tidak valid', variant: 'destructive' });
+      return false;
+    }
+    if (formData.jam_pulang && !/^\d{2}:\d{2}$/.test(formData.jam_pulang)) {
+      toast({ title: 'Validasi', description: 'Format jam pulang tidak valid', variant: 'destructive' });
+      return false;
+    }
+    return true;
+  };
+
+  const toHHmmss = (val: string) => (val ? (val.length === 5 ? `${val}:00` : val) : null);
+
   const handleSubmit = async () => {
+    if (!validateForm()) return;
+
     try {
-      if (!formData.kode_shift.trim()) {
-        toast({
-          title: 'Error',
-          description: 'Kode shift harus diisi',
-          variant: 'destructive',
-        });
-        return;
-      }
+      setSaving(true);
+      const payload = {
+        kode_shift: formData.kode_shift.trim().toUpperCase(),
+        jam_masuk: toHHmmss(formData.jam_masuk),
+        jam_pulang: toHHmmss(formData.jam_pulang),
+        hari_berikutnya: formData.hari_berikutnya,
+      };
 
       if (editMode && selectedShift) {
-        toast({
-          title: 'Berhasil',
-          description: 'Shift berhasil diperbarui',
-        });
+        await apiClient.updateShift(selectedShift.shift_id, payload);
+        toast({ title: 'Berhasil', description: 'Shift berhasil diperbarui' });
       } else {
-        toast({
-          title: 'Berhasil',
-          description: 'Shift berhasil ditambahkan',
-        });
+        await apiClient.createShift(payload);
+        toast({ title: 'Berhasil', description: 'Shift berhasil ditambahkan' });
       }
 
       setDialogOpen(false);
       resetForm();
-      loadShifts();
-    } catch (error) {
-      console.error('Error saving shift:', error);
+      await loadShifts();
+    } catch (e: any) {
       toast({
         title: 'Error',
-        description: 'Gagal menyimpan shift',
+        description: handleApiError(e) || 'Gagal menyimpan shift',
         variant: 'destructive',
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -160,30 +153,31 @@ export default function ShiftPage() {
     setSelectedShift(shift);
     setFormData({
       kode_shift: shift.kode_shift,
-      jam_masuk: shift.jam_masuk?.substring(0, 5) || '',
-      jam_pulang: shift.jam_pulang?.substring(0, 5) || '',
-      hari_berikutnya: shift.hari_berikutnya,
+      jam_masuk: shift.jam_masuk ? shift.jam_masuk.substring(0, 5) : '',
+      jam_pulang: shift.jam_pulang ? shift.jam_pulang.substring(0, 5) : '',
+      hari_berikutnya: !!shift.hari_berikutnya,
     });
     setEditMode(true);
     setDialogOpen(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus shift ini?')) return;
+    const ok = confirm('Apakah Anda yakin ingin menghapus shift ini?');
+    if (!ok) return;
 
     try {
-      setShifts(shifts.filter((s) => s.shift_id !== id));
-      toast({
-        title: 'Berhasil',
-        description: 'Shift berhasil dihapus',
-      });
-    } catch (error) {
-      console.error('Error deleting shift:', error);
+      setDeletingId(id);
+      await apiClient.deleteShift(id);
+      setShifts((prev) => prev.filter((s) => s.shift_id !== id));
+      toast({ title: 'Berhasil', description: 'Shift berhasil dihapus' });
+    } catch (e: any) {
       toast({
         title: 'Error',
-        description: 'Gagal menghapus shift',
+        description: handleApiError(e) || 'Gagal menghapus shift',
         variant: 'destructive',
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -199,7 +193,7 @@ export default function ShiftPage() {
   };
 
   const getShiftIcon = (kode: string) => {
-    switch (kode.toUpperCase()) {
+    switch ((kode || '').toUpperCase()) {
       case 'PAGI':
         return <Sunrise className="h-5 w-5" />;
       case 'SIANG':
@@ -212,7 +206,7 @@ export default function ShiftPage() {
   };
 
   const getShiftColor = (kode: string) => {
-    switch (kode.toUpperCase()) {
+    switch ((kode || '').toUpperCase()) {
       case 'PAGI':
         return 'bg-yellow-100 text-yellow-800';
       case 'SIANG':
@@ -238,7 +232,13 @@ export default function ShiftPage() {
           description="Kelola jadwal shift kerja karyawan"
           breadcrumbs={breadcrumbs}
           action={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog
+              open={dialogOpen}
+              onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (!open) resetForm();
+              }}
+            >
               <DialogTrigger asChild>
                 <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -247,9 +247,7 @@ export default function ShiftPage() {
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>
-                    {editMode ? 'Edit Shift' : 'Tambah Shift Baru'}
-                  </DialogTitle>
+                  <DialogTitle>{editMode ? 'Edit Shift' : 'Tambah Shift Baru'}</DialogTitle>
                   <DialogDescription>
                     Lengkapi formulir untuk {editMode ? 'mengubah' : 'menambah'} shift
                   </DialogDescription>
@@ -276,9 +274,7 @@ export default function ShiftPage() {
                         id="jam_masuk"
                         type="time"
                         value={formData.jam_masuk}
-                        onChange={(e) =>
-                          setFormData({ ...formData, jam_masuk: e.target.value })
-                        }
+                        onChange={(e) => setFormData({ ...formData, jam_masuk: e.target.value })}
                       />
                     </div>
 
@@ -288,9 +284,7 @@ export default function ShiftPage() {
                         id="jam_pulang"
                         type="time"
                         value={formData.jam_pulang}
-                        onChange={(e) =>
-                          setFormData({ ...formData, jam_pulang: e.target.value })
-                        }
+                        onChange={(e) => setFormData({ ...formData, jam_pulang: e.target.value })}
                       />
                     </div>
                   </div>
@@ -316,8 +310,8 @@ export default function ShiftPage() {
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>
                     Batal
                   </Button>
-                  <Button onClick={handleSubmit}>
-                    {editMode ? 'Simpan Perubahan' : 'Tambah Shift'}
+                  <Button onClick={handleSubmit} disabled={saving}>
+                    {saving ? 'Menyimpan...' : (editMode ? 'Simpan Perubahan' : 'Tambah Shift')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -371,6 +365,7 @@ export default function ShiftPage() {
                       size="sm"
                       onClick={() => handleEdit(shift)}
                       className="flex-1"
+                      title="Edit"
                     >
                       <Edit className="h-3 w-3" />
                     </Button>
@@ -379,8 +374,10 @@ export default function ShiftPage() {
                       size="sm"
                       onClick={() => handleDelete(shift.shift_id)}
                       className="flex-1 text-red-600 hover:text-red-700"
+                      disabled={deletingId === shift.shift_id}
+                      title="Hapus"
                     >
-                      <Trash className="h-3 w-3" />
+                      {deletingId === shift.shift_id ? <LoadingSpinner size="sm" /> : <Trash className="h-3 w-3" />}
                     </Button>
                   </div>
                 </CardContent>
@@ -393,9 +390,7 @@ export default function ShiftPage() {
         <Card>
           <CardHeader>
             <CardTitle>Detail Shift</CardTitle>
-            <CardDescription>
-              Informasi lengkap jadwal shift yang tersedia
-            </CardDescription>
+            <CardDescription>Informasi lengkap jadwal shift yang tersedia</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -421,20 +416,16 @@ export default function ShiftPage() {
                 </TableHeader>
                 <TableBody>
                   {shifts.map((shift, index) => {
-                    // Calculate duration
                     let duration = '-';
                     if (shift.jam_masuk && shift.jam_pulang) {
                       const masuk = new Date(`2024-01-01T${shift.jam_masuk}`);
                       let pulang = new Date(`2024-01-01T${shift.jam_pulang}`);
-
                       if (shift.hari_berikutnya || pulang < masuk) {
                         pulang = new Date(pulang.getTime() + 24 * 60 * 60 * 1000);
                       }
-
                       const diff = pulang.getTime() - masuk.getTime();
                       const hours = Math.floor(diff / (1000 * 60 * 60));
                       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
                       duration = `${hours} jam${minutes > 0 ? ` ${minutes} menit` : ''}`;
                     }
 
@@ -487,11 +478,7 @@ export default function ShiftPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(shift)}
-                            >
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(shift)} title="Edit">
                               <Edit className="h-4 w-4" />
                             </Button>
                             <Button
@@ -499,8 +486,10 @@ export default function ShiftPage() {
                               size="icon"
                               onClick={() => handleDelete(shift.shift_id)}
                               className="text-red-600 hover:text-red-700"
+                              disabled={deletingId === shift.shift_id}
+                              title="Hapus"
                             >
-                              <Trash className="h-4 w-4" />
+                              {deletingId === shift.shift_id ? <LoadingSpinner size="sm" /> : <Trash className="h-4 w-4" />}
                             </Button>
                           </div>
                         </TableCell>

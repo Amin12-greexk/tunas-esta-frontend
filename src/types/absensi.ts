@@ -1,4 +1,6 @@
 // src/types/absensi.ts
+import { Karyawan } from './karyawan';
+
 export interface Absensi {
   absensi_id: number;
   karyawan_id: number;

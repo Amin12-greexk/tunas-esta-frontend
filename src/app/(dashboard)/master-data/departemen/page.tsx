@@ -31,7 +31,7 @@ import {
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
-import { apiClient } from '@/lib/api';
+import { apiClient, handleApiError } from '@/lib/api';
 import { Departemen } from '@/types/master-data';
 import { 
   Plus, 
@@ -43,16 +43,23 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+type DepartemenForm = {
+  nama_departemen: string;
+  menggunakan_shift: boolean;
+};
+
 export default function DepartemenPage() {
   const [departemen, setDepartemen] = useState<Departemen[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedDepartemen, setSelectedDepartemen] = useState<Departemen | null>(null);
-  
+
   // Form state
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<DepartemenForm>({
     nama_departemen: '',
     menggunakan_shift: false,
   });
@@ -65,78 +72,72 @@ export default function DepartemenPage() {
     try {
       setIsLoading(true);
       setError('');
-      
-      // Mock data for now
-      const mockData: Departemen[] = [
-        {
-          departemen_id: 1,
-          nama_departemen: 'Produksi',
-          menggunakan_shift: true,
-          karyawan_count: 85,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          departemen_id: 2,
-          nama_departemen: 'Human Resources',
-          menggunakan_shift: false,
-          karyawan_count: 8,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          departemen_id: 3,
-          nama_departemen: 'Finance',
-          menggunakan_shift: false,
-          karyawan_count: 12,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-        {
-          departemen_id: 4,
-          nama_departemen: 'Quality Control',
-          menggunakan_shift: true,
-          karyawan_count: 15,
-          created_at: '2024-01-01',
-          updated_at: '2024-01-01',
-        },
-      ];
-      
-      setDepartemen(mockData);
-    } catch (error) {
-      console.error('Error loading departemen:', error);
-      setError('Gagal memuat data departemen');
+      const res = await apiClient.getDepartemen();
+      // Optional: pastikan ada karyawan_count (kalau backend belum kirim, default 0)
+      const data = Array.isArray(res.data) ? res.data : [];
+      setDepartemen(
+        data.map((d: any) => ({
+          ...d,
+          karyawan_count: typeof d.karyawan_count === 'number' ? d.karyawan_count : 0,
+        }))
+      );
+    } catch (e: any) {
+      const msg = handleApiError(e);
+      setError(msg || 'Gagal memuat data departemen');
     } finally {
       setIsLoading(false);
     }
   };
 
+  const validateForm = () => {
+    if (!formData.nama_departemen.trim()) {
+      toast({
+        title: 'Validasi',
+        description: 'Nama departemen wajib diisi',
+        variant: 'destructive',
+      });
+    return false;
+    }
+    return true;
+  };
+
   const handleSubmit = async () => {
+    if (!validateForm()) return;
+
     try {
+      setSaving(true);
+
       if (editMode && selectedDepartemen) {
-        // await apiClient.updateDepartemen(selectedDepartemen.departemen_id, formData);
+        await apiClient.updateDepartemen(selectedDepartemen.departemen_id, {
+          nama_departemen: formData.nama_departemen.trim(),
+          menggunakan_shift: formData.menggunakan_shift,
+        });
         toast({
           title: 'Berhasil',
           description: 'Departemen berhasil diperbarui',
         });
       } else {
-        // await apiClient.createDepartemen(formData);
+        await apiClient.createDepartemen({
+          nama_departemen: formData.nama_departemen.trim(),
+          menggunakan_shift: formData.menggunakan_shift,
+        });
         toast({
           title: 'Berhasil',
           description: 'Departemen berhasil ditambahkan',
         });
       }
-      
+
       setDialogOpen(false);
       resetForm();
-      loadDepartemen();
-    } catch (error) {
-      console.error('Error saving departemen:', error);
+      await loadDepartemen();
+    } catch (e: any) {
       toast({
         title: 'Error',
-        description: 'Gagal menyimpan departemen',
+        description: handleApiError(e) || 'Gagal menyimpan departemen',
         variant: 'destructive',
       });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -144,29 +145,32 @@ export default function DepartemenPage() {
     setSelectedDepartemen(dept);
     setFormData({
       nama_departemen: dept.nama_departemen,
-      menggunakan_shift: dept.menggunakan_shift,
+      menggunakan_shift: !!dept.menggunakan_shift,
     });
     setEditMode(true);
     setDialogOpen(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus departemen ini?')) return;
-    
+    const ok = confirm('Apakah Anda yakin ingin menghapus departemen ini?');
+    if (!ok) return;
+
     try {
-      // await apiClient.deleteDepartemen(id);
-      setDepartemen(departemen.filter(d => d.departemen_id !== id));
+      setDeletingId(id);
+      await apiClient.deleteDepartemen(id);
+      setDepartemen((prev) => prev.filter((d) => d.departemen_id !== id));
       toast({
         title: 'Berhasil',
         description: 'Departemen berhasil dihapus',
       });
-    } catch (error) {
-      console.error('Error deleting departemen:', error);
+    } catch (e: any) {
       toast({
         title: 'Error',
-        description: 'Gagal menghapus departemen',
+        description: handleApiError(e) || 'Gagal menghapus departemen',
         variant: 'destructive',
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -193,7 +197,10 @@ export default function DepartemenPage() {
           description="Kelola data departemen perusahaan"
           breadcrumbs={breadcrumbs}
           action={
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <Dialog open={dialogOpen} onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) resetForm();
+            }}>
               <DialogTrigger asChild>
                 <Button onClick={() => { resetForm(); setDialogOpen(true); }}>
                   <Plus className="h-4 w-4 mr-2" />
@@ -209,7 +216,7 @@ export default function DepartemenPage() {
                     Lengkapi formulir untuk {editMode ? 'mengubah' : 'menambah'} departemen
                   </DialogDescription>
                 </DialogHeader>
-                
+
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="nama">Nama Departemen</Label>
@@ -220,7 +227,7 @@ export default function DepartemenPage() {
                       placeholder="Masukkan nama departemen"
                     />
                   </div>
-                  
+
                   <div className="flex items-center justify-between">
                     <div className="space-y-0.5">
                       <Label htmlFor="shift">Menggunakan Shift</Label>
@@ -235,13 +242,13 @@ export default function DepartemenPage() {
                     />
                   </div>
                 </div>
-                
+
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>
                     Batal
                   </Button>
-                  <Button onClick={handleSubmit}>
-                    {editMode ? 'Simpan Perubahan' : 'Tambah Departemen'}
+                  <Button onClick={handleSubmit} disabled={saving}>
+                    {saving ? 'Menyimpan...' : (editMode ? 'Simpan Perubahan' : 'Tambah Departemen')}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -343,6 +350,7 @@ export default function DepartemenPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleEdit(dept)}
+                            title="Edit"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -351,8 +359,14 @@ export default function DepartemenPage() {
                             size="icon"
                             onClick={() => handleDelete(dept.departemen_id)}
                             className="text-red-600 hover:text-red-700"
+                            disabled={deletingId === dept.departemen_id}
+                            title="Hapus"
                           >
-                            <Trash className="h-4 w-4" />
+                            {deletingId === dept.departemen_id ? (
+                              <LoadingSpinner size="sm" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

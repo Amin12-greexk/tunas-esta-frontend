@@ -1,3 +1,6 @@
+// src/types/payroll.ts
+import { Karyawan } from './karyawan';
+
 export interface RiwayatGaji {
   gaji_id: number;
   karyawan_id: number;
@@ -8,6 +11,7 @@ export interface RiwayatGaji {
   periode_selesai: string;
   gaji_final?: number;
   tanggal_pembayaran?: string;
+  status?: 'draft' | 'approved' | 'paid' | 'cancelled';
   karyawan?: Karyawan;
   detailGaji?: DetailGaji[];
   created_at: string;
