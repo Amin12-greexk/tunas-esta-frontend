@@ -195,6 +195,7 @@ export const apiClient = {
     api.delete('/testing/clear-test-data'),
 };
 
+
 // Error handler helper
 export const handleApiError = (error: AxiosError): string => {
   if (error.response?.data) {

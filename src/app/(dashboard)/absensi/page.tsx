@@ -95,28 +95,42 @@ export default function AbsensiPage() {
     }
   };
 
-  const loadAbsensi = async () => {
-    try {
-      setIsLoading(true);
-      setError('');
+const loadAbsensi = async () => {
+  try {
+    setIsLoading(true);
+    setError('');
 
-      const params: any = {
-        tanggal_absensi: selectedDate,
-      };
-      if (filterDepartemen !== 'all') params.departemen = filterDepartemen;
-      if (filterStatus !== 'all') params.status = filterStatus;
-      if (searchTerm.trim()) params.q = searchTerm.trim();
-
-      const res = await apiClient.getAbsensi(params);
-      const data = Array.isArray(res.data) ? res.data : [];
-      setAbsensi(data);
-    } catch (e: any) {
-      setError(handleApiError(e) || 'Gagal memuat data absensi');
-      setAbsensi([]);
-    } finally {
-      setIsLoading(false);
+    const params: any = {};
+    if (selectedDate) {
+      // backend Anda membaca ini
+      params.start_date = selectedDate;
+      params.end_date = selectedDate;
     }
-  };
+
+    if (filterDepartemen !== 'all') params.departemen = filterDepartemen;
+    if (filterStatus !== 'all') params.status = filterStatus;
+    if (searchTerm.trim()) params.q = searchTerm.trim();
+
+    const res = await apiClient.getAbsensi(params);
+
+    // handle pagination
+    const payload = res?.data ?? [];
+    const rows = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.data)
+      ? payload.data
+      : [];
+
+    setAbsensi(rows);
+  } catch (e: any) {
+    setError(handleApiError(e) || 'Gagal memuat data absensi');
+    setAbsensi([]);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+
 
   // Kalau backend belum mendukung filter di server, ini tetap aman.
   const filteredAbsensi = useMemo(() => {

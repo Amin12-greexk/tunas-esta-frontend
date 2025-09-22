@@ -1,4 +1,3 @@
-// src/app/(dashboard)/absensi/[karyawan_id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -36,6 +35,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Karyawan } from '@/types/karyawan';
 import { Absensi } from '@/types/absensi';
 import { getInitials, formatDate, formatTime, formatCurrency, getStatusColor } from '@/lib/utils';
+import { apiClient } from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
 import { 
   Calendar as CalendarIcon,
   Clock,
@@ -61,7 +62,9 @@ export default function AbsensiKaryawanDetailPage() {
   const [absensiData, setAbsensiData] = useState<Absensi[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('2024-01');
+  const [selectedMonth, setSelectedMonth] = useState(
+    new Date().toISOString().slice(0, 7) // Current month YYYY-MM
+  );
   const [selectedTab, setSelectedTab] = useState('overview');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
@@ -72,73 +75,78 @@ export default function AbsensiKaryawanDetailPage() {
     totalIzin: 0,
     totalCuti: 0,
     totalAlpha: 0,
+    totalLibur: 0,
     totalLembur: 0,
     totalGajiTambahan: 0,
     persentaseKehadiran: 0,
   });
 
   useEffect(() => {
-    loadData();
-  }, [params.karyawan_id, selectedMonth]);
+    loadKaryawanData();
+  }, [params.karyawan_id]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (karyawan) {
+      loadAbsensiData();
+    }
+  }, [karyawan, selectedMonth]);
+
+  const loadKaryawanData = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiClient.getKaryawanById(Number(params.karyawan_id));
+      setKaryawan(response.data);
+    } catch (error: any) {
+      console.error('Error loading karyawan:', error);
+      setError('Gagal memuat data karyawan');
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || 'Gagal memuat data karyawan',
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadAbsensiData = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      // Mock data karyawan
-      const mockKaryawan: Karyawan = {
-        karyawan_id: Number(params.karyawan_id),
-        nik: 'NK001',
-        nama_lengkap: 'John Doe',
-        tempat_lahir: 'Jakarta',
-        tanggal_lahir: '1990-01-01',
-        jenis_kelamin: 'Laki-laki',
-        alamat: 'Jl. Contoh No. 123',
-        status_perkawinan: 'Menikah',
-        nomor_telepon: '081234567890',
-        email: 'john.doe@tunasesta.com',
-        role: 'karyawan',
-        tanggal_masuk: '2020-01-15',
-        kategori_gaji: 'Bulanan',
-        periode_gaji: 'bulanan',
-        status: 'Aktif',
-        departemen_id_saat_ini: 1,
-        jabatan_id_saat_ini: 1,
-        role_karyawan: 'produksi',
-        departemenSaatIni: {
-          departemen_id: 1,
-          nama_departemen: 'Produksi',
-          menggunakan_shift: true,
-          created_at: '',
-          updated_at: '',
-        },
-        jabatanSaatIni: {
-          jabatan_id: 1,
-          nama_jabatan: 'Operator',
-          created_at: '',
-          updated_at: '',
-        },
-        created_at: '',
-        updated_at: '',
-      };
+      const [year, month] = selectedMonth.split('-');
+      const startDate = `${selectedMonth}-01`;
+      const endDate = `${selectedMonth}-${new Date(Number(year), Number(month), 0).getDate()}`;
 
-      // Mock data absensi untuk bulan yang dipilih
-      const mockAbsensi: Absensi[] = generateMonthlyAttendance(Number(params.karyawan_id), selectedMonth);
-      
-      setKaryawan(mockKaryawan);
-      setAbsensiData(mockAbsensi);
+      // Get absensi data for the selected month
+      const response = await apiClient.getAbsensi({
+        karyawan_id: params.karyawan_id,
+        start_date: startDate,
+        end_date: endDate,
+      });
+
+      const data = response.data.data || response.data || [];
+      setAbsensiData(data);
       
       // Calculate statistics
-      const hadir = mockAbsensi.filter(a => a.status === 'Hadir').length;
-      const terlambat = mockAbsensi.filter(a => a.status === 'Terlambat').length;
-      const izin = mockAbsensi.filter(a => a.status === 'Izin').length;
-      const cuti = mockAbsensi.filter(a => a.status === 'Cuti').length;
-      const alpha = mockAbsensi.filter(a => a.status === 'Alpha').length;
-      const totalLembur = mockAbsensi.reduce((sum, a) => sum + a.jam_lembur, 0);
-      const totalGajiTambahan = mockAbsensi.reduce((sum, a) => sum + a.total_gaji_tambahan, 0);
-      const totalHariKerja = mockAbsensi.filter(a => a.jenis_hari === 'weekday').length;
-      const persentaseKehadiran = totalHariKerja > 0 ? Math.round(((hadir + terlambat) / totalHariKerja) * 100) : 0;
+      const hadir = data.filter((a: Absensi) => a.status === 'Hadir').length;
+      const terlambat = data.filter((a: Absensi) => a.status === 'Terlambat').length;
+      const izin = data.filter((a: Absensi) => a.status === 'Izin').length;
+      const cuti = data.filter((a: Absensi) => a.status === 'Cuti').length;
+      const alpha = data.filter((a: Absensi) => a.status === 'Alpha').length;
+      const libur = data.filter((a: Absensi) => a.status === 'Libur').length;
+      
+      const totalLembur = data.reduce((sum: number, a: Absensi) => sum + (a.jam_lembur || 0), 0);
+      const totalGajiTambahan = data.reduce((sum: number, a: Absensi) => sum + (a.total_gaji_tambahan || 0), 0);
+      
+      // Calculate working days (exclude weekends and holidays)
+      const totalHariKerja = data.filter((a: Absensi) => 
+        a.jenis_hari === 'weekday' && a.status !== 'Libur'
+      ).length;
+      
+      const persentaseKehadiran = totalHariKerja > 0 
+        ? Math.round(((hadir + terlambat) / totalHariKerja) * 100) 
+        : 0;
 
       setStats({
         totalHadir: hadir,
@@ -146,88 +154,63 @@ export default function AbsensiKaryawanDetailPage() {
         totalIzin: izin,
         totalCuti: cuti,
         totalAlpha: alpha,
+        totalLibur: libur,
         totalLembur: totalLembur,
         totalGajiTambahan: totalGajiTambahan,
         persentaseKehadiran: persentaseKehadiran,
       });
-    } catch (error) {
-      console.error('Error loading data:', error);
-      setError('Gagal memuat data absensi karyawan');
+    } catch (error: any) {
+      console.error('Error loading absensi:', error);
+      setError('Gagal memuat data absensi');
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || 'Gagal memuat data absensi',
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Generate mock attendance data for a month
-  const generateMonthlyAttendance = (karyawanId: number, periode: string): Absensi[] => {
-    const [year, month] = periode.split('-').map(Number);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const attendance: Absensi[] = [];
+  const handleExport = async () => {
+    try {
+      // You can create an export endpoint in your backend
+      const [year, month] = selectedMonth.split('-');
+      const startDate = `${selectedMonth}-01`;
+      const endDate = `${selectedMonth}-${new Date(Number(year), Number(month), 0).getDate()}`;
 
-    for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(year, month - 1, day);
-      const dayOfWeek = date.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      // For now, just create CSV from current data
+      const csvContent = [
+        ['Tanggal', 'Hari', 'Jam Masuk', 'Jam Pulang', 'Status', 'Lembur (Jam)', 'Gaji Tambahan'],
+        ...absensiData.map(a => [
+          formatDate(a.tanggal_absensi, 'dd/MM/yyyy'),
+          formatDate(a.tanggal_absensi, 'EEEE'),
+          a.jam_scan_masuk || '-',
+          a.jam_scan_pulang || '-',
+          a.status,
+          a.jam_lembur || '0',
+          a.total_gaji_tambahan || '0'
+        ])
+      ].map(row => row.join(',')).join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `absensi_${karyawan?.nik}_${selectedMonth}.csv`;
+      link.click();
       
-      // Skip weekends for most cases
-      if (isWeekend && Math.random() > 0.3) continue;
-
-      const random = Math.random();
-      let status: Absensi['status'] = 'Hadir';
-      let jamMasuk: string | undefined = '08:00:00';
-let jamPulang: string | undefined = '17:00:00';
-
-      let lembur = 0;
-
-      if (random < 0.7) {
-        status = 'Hadir';
-        jamMasuk = `08:${Math.floor(Math.random() * 10).toString().padStart(2, '0')}:00`;
-        jamPulang = `17:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}:00`;
-        lembur = Math.random() > 0.7 ? Math.floor(Math.random() * 3) : 0;
-      } else if (random < 0.85) {
-        status = 'Terlambat';
-        jamMasuk = `08:${(15 + Math.floor(Math.random() * 45)).toString().padStart(2, '0')}:00`;
-        jamPulang = `17:${Math.floor(Math.random() * 30).toString().padStart(2, '0')}:00`;
-      } else if (random < 0.92) {
-        status = 'Izin';
-        jamMasuk = undefined;
-        jamPulang = undefined;
-      } else if (random < 0.96) {
-        status = 'Cuti';
-        jamMasuk = undefined;
-        jamPulang = undefined;
-      } else {
-        status = 'Alpha';
-        jamMasuk = undefined;
-        jamPulang = undefined;
-      }
-
-      attendance.push({
-        absensi_id: day,
-        karyawan_id: karyawanId,
-        tanggal_absensi: `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`,
-        jam_scan_masuk: jamMasuk,
-        jam_scan_pulang: jamPulang,
-        durasi_lembur_menit: lembur * 60,
-        status: status,
-        jam_lembur: lembur,
-        jenis_hari: isWeekend ? 'weekend' : 'weekday',
-        hadir_6_hari_periode: status === 'Hadir' && day % 7 !== 0,
-        upah_lembur: lembur * 30000,
-        premi: status === 'Hadir' ? 20000 : 0,
-        uang_makan: status === 'Hadir' || status === 'Terlambat' ? 15000 : 0,
-        total_gaji_tambahan: (lembur * 30000) + (status === 'Hadir' ? 20000 : 0) + (status === 'Hadir' || status === 'Terlambat' ? 15000 : 0),
-        created_at: '',
-        updated_at: '',
+      toast({
+        title: "Berhasil",
+        description: "Data absensi berhasil diexport",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Gagal export data absensi",
+        variant: "destructive",
       });
     }
-
-    return attendance;
-  };
-
-  const handleExport = () => {
-    // Implement export functionality
-    console.log('Exporting attendance data...');
   };
 
   const getAttendanceDates = () => {
@@ -238,6 +221,16 @@ let jamPulang: string | undefined = '17:00:00';
     const dateStr = date.toISOString().split('T')[0];
     return absensiData.find(a => a.tanggal_absensi === dateStr);
   };
+
+  // Generate periode options (last 12 months)
+  const periodeOptions = Array.from({ length: 12 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - i);
+    return {
+      value: date.toISOString().slice(0, 7),
+      label: date.toLocaleDateString('id-ID', { year: 'numeric', month: 'long' })
+    };
+  });
 
   const breadcrumbs = [
     { label: 'Dashboard', href: '/dashboard' },
@@ -317,15 +310,17 @@ let jamPulang: string | undefined = '17:00:00';
               </div>
               
               <div className="pt-4 border-t">
-                <Label className="text-sm text-gray-500">Periode</Label>
+                <p className="text-sm text-gray-500 mb-1">Periode</p>
                 <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="2024-01">Januari 2024</SelectItem>
-                    <SelectItem value="2023-12">Desember 2023</SelectItem>
-                    <SelectItem value="2023-11">November 2023</SelectItem>
+                    {periodeOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -394,14 +389,14 @@ let jamPulang: string | undefined = '17:00:00';
                 <Badge className="bg-red-100 text-red-800">{stats.totalAlpha}</Badge>
               </div>
               
-              <Separator className="my-3" />
+              <div className="border-t my-3" />
               
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
                   <Timer className="h-4 w-4 text-gray-500" />
                   <span className="text-sm">Total Lembur</span>
                 </div>
-                <span className="font-semibold">{stats.totalLembur} jam</span>
+                <span className="font-semibold">{stats.totalLembur.toFixed(1)} jam</span>
               </div>
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -448,7 +443,7 @@ let jamPulang: string | undefined = '17:00:00';
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">Total Lembur</p>
-                        <p className="text-2xl font-bold">{stats.totalLembur} jam</p>
+                        <p className="text-2xl font-bold">{stats.totalLembur.toFixed(1)} jam</p>
                       </div>
                       <Timer className="h-8 w-8 text-gray-400" />
                     </div>
@@ -492,55 +487,62 @@ let jamPulang: string | undefined = '17:00:00';
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Tanggal</TableHead>
-                          <TableHead>Hari</TableHead>
-                          <TableHead>Jam Masuk</TableHead>
-                          <TableHead>Jam Pulang</TableHead>
-                          <TableHead>Lembur</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Gaji Tambahan</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {absensiData.map((item, index) => (
-                          <motion.tr
-                            key={item.absensi_id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.02 }}
-                          >
-                            <TableCell>
-                              {formatDate(item.tanggal_absensi, 'dd MMM')}
-                            </TableCell>
-                            <TableCell>
-                              {formatDate(item.tanggal_absensi, 'EEEE')}
-                            </TableCell>
-                            <TableCell>
-                              {item.jam_scan_masuk ? formatTime(item.jam_scan_masuk) : '-'}
-                            </TableCell>
-                            <TableCell>
-                              {item.jam_scan_pulang ? formatTime(item.jam_scan_pulang) : '-'}
-                            </TableCell>
-                            <TableCell>
-                              {item.jam_lembur > 0 ? `${item.jam_lembur} jam` : '-'}
-                            </TableCell>
-                            <TableCell>
-                              <Badge className={getStatusColor(item.status)}>
-                                {item.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-medium">
-                              {formatCurrency(item.total_gaji_tambahan)}
-                            </TableCell>
-                          </motion.tr>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  {absensiData.length === 0 ? (
+                    <div className="text-center py-8">
+                      <CalendarIcon className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                      <p className="text-gray-500">Tidak ada data absensi untuk periode ini</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Tanggal</TableHead>
+                            <TableHead>Hari</TableHead>
+                            <TableHead>Jam Masuk</TableHead>
+                            <TableHead>Jam Pulang</TableHead>
+                            <TableHead>Lembur</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Gaji Tambahan</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {absensiData.map((item, index) => (
+                            <motion.tr
+                              key={item.absensi_id}
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: index * 0.02 }}
+                            >
+                              <TableCell>
+                                {formatDate(item.tanggal_absensi, 'dd MMM')}
+                              </TableCell>
+                              <TableCell>
+                                {formatDate(item.tanggal_absensi, 'EEEE')}
+                              </TableCell>
+                              <TableCell>
+                                {item.jam_scan_masuk || '-'}
+                              </TableCell>
+                              <TableCell>
+                                {item.jam_scan_pulang || '-'}
+                              </TableCell>
+                              <TableCell>
+                                {item.jam_lembur > 0 ? `${item.jam_lembur.toFixed(1)} jam` : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={getStatusColor(item.status)}>
+                                  {item.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {formatCurrency(item.total_gaji_tambahan)}
+                              </TableCell>
+                            </motion.tr>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -600,19 +602,19 @@ let jamPulang: string | undefined = '17:00:00';
                               {attendance.jam_scan_masuk && (
                                 <div className="flex justify-between">
                                   <span className="text-gray-500">Jam Masuk:</span>
-                                  <span>{formatTime(attendance.jam_scan_masuk)}</span>
+                                  <span>{attendance.jam_scan_masuk}</span>
                                 </div>
                               )}
                               {attendance.jam_scan_pulang && (
                                 <div className="flex justify-between">
                                   <span className="text-gray-500">Jam Pulang:</span>
-                                  <span>{formatTime(attendance.jam_scan_pulang)}</span>
+                                  <span>{attendance.jam_scan_pulang}</span>
                                 </div>
                               )}
                               {attendance.jam_lembur > 0 && (
                                 <div className="flex justify-between">
                                   <span className="text-gray-500">Lembur:</span>
-                                  <span>{attendance.jam_lembur} jam</span>
+                                  <span>{attendance.jam_lembur.toFixed(1)} jam</span>
                                 </div>
                               )}
                               {attendance.total_gaji_tambahan > 0 && (
@@ -638,14 +640,4 @@ let jamPulang: string | undefined = '17:00:00';
       </div>
     </DashboardLayout>
   );
-}
-
-// Helper component for separator
-function Separator({ className }: { className?: string }) {
-  return <div className={`border-t ${className}`} />;
-}
-
-// Helper component for labels
-function Label({ className, children }: { className?: string; children: React.ReactNode }) {
-  return <p className={className}>{children}</p>;
 }
