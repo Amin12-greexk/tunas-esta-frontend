@@ -65,7 +65,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
       nomor_telepon: karyawan?.nomor_telepon || '',
       email: karyawan?.email || '',
       tanggal_masuk: karyawan?.tanggal_masuk || '',
-      status: (karyawan?.status as any) || 'Aktif',
+      // Removed status field
       kategori_gaji: (karyawan?.kategori_gaji as any) || 'Bulanan',
       departemen_id_saat_ini: karyawan?.departemen_id_saat_ini || 0,
       jabatan_id_saat_ini: karyawan?.jabatan_id_saat_ini || 0,
@@ -89,6 +89,7 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
       nomor_telepon: karyawan.nomor_telepon || '',
       email: karyawan.email || '',
       tanggal_masuk: karyawan.tanggal_masuk || '',
+      // Removed status field
       kategori_gaji: (karyawan.kategori_gaji as any) || 'Bulanan',
       departemen_id_saat_ini: karyawan.departemen_id_saat_ini || 0,
       jabatan_id_saat_ini: karyawan.jabatan_id_saat_ini || 0,
@@ -134,6 +135,8 @@ export function KaryawanForm({ karyawan, mode }: KaryawanFormProps) {
         jabatan_id_saat_ini: data.jabatan_id_saat_ini || null,
         jam_kerja_masuk: toHHmmss(data.jam_kerja_masuk),
         jam_kerja_pulang: toHHmmss(data.jam_kerja_pulang),
+        // Add status field in payload if needed by backend
+        status: 'Aktif', // or get from karyawan?.status if editing
       };
 
       if (mode === 'create') {

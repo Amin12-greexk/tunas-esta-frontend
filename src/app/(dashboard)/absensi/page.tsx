@@ -1,10 +1,10 @@
 // src/app/(dashboard)/absensi/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { PageHeader } from '@/components/common/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,151 +23,139 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/hooks/use-auth';
 import { Absensi } from '@/types/absensi';
-import { getStatusColor, formatDate, formatTime, formatCurrency } from '@/lib/utils';
-import { 
-  Search, 
-  Download,
-  Calendar as CalendarIcon,
-  Clock,
+import { getStatusColor, formatTime } from '@/lib/utils';
+import {
+  Search,
+  RefreshCw,
+  Fingerprint,
   Users,
   AlertCircle,
-  CheckCircle,
-  XCircle,
-  Fingerprint,
-  RefreshCw,
-  FileText,
-  BarChart3
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { apiClient, handleApiError } from '@/lib/api';
+
+type DepartemenOpt = { value: string; label: string };
 
 export default function AbsensiPage() {
   const { user } = useAuth();
+
   const [absensi, setAbsensi] = useState<Absensi[]>([]);
+  const [departemenOptions, setDepartemenOptions] = useState<DepartemenOpt[]>([
+    { value: 'all', label: 'Semua Departemen' },
+  ]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const d = new Date();
+    // YYYY-MM-DD (local)
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  });
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDepartemen, setFilterDepartemen] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [activeTab, setActiveTab] = useState('today');
-
-  // Statistics
-  const [stats, setStats] = useState({
-    totalKaryawan: 150,
-    hadir: 138,
-    terlambat: 4,
-    izin: 3,
-    cuti: 2,
-    alpha: 3,
-  });
 
   useEffect(() => {
+    // load master dropdown once
+    loadDepartemen();
+  }, []);
+
+  useEffect(() => {
+    // load absensi whenever filter changes
     loadAbsensi();
-  }, [selectedDate, activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, filterDepartemen, filterStatus, searchTerm]);
+
+  const loadDepartemen = async () => {
+    try {
+      const res = await apiClient.getDepartemen();
+      const opts: DepartemenOpt[] = [
+        { value: 'all', label: 'Semua Departemen' },
+        ...(Array.isArray(res.data)
+          ? res.data.map((d: any) => ({
+              value: String(d.nama_departemen), // filter by name (sesuai tampilan)
+              label: d.nama_departemen,
+            }))
+          : []),
+      ];
+      setDepartemenOptions(opts);
+    } catch (e) {
+      // bukan fatal untuk halaman ini
+      setDepartemenOptions([{ value: 'all', label: 'Semua Departemen' }]);
+    }
+  };
 
   const loadAbsensi = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      // Mock data
-      const mockData: Absensi[] = [
-        {
-          absensi_id: 1,
-          karyawan_id: 1,
-          tanggal_absensi: selectedDate.toISOString().split('T')[0],
-          jam_scan_masuk: '08:00:00',
-          jam_scan_pulang: '17:00:00',
-          durasi_lembur_menit: 0,
-          status: 'Hadir',
-          jam_lembur: 0,
-          jenis_hari: 'weekday',
-          hadir_6_hari_periode: true,
-          upah_lembur: 0,
-          premi: 20000,
-          uang_makan: 15000,
-          total_gaji_tambahan: 35000,
-          karyawan: {
-            karyawan_id: 1,
-            nik: 'NK001',
-            nama_lengkap: 'John Doe',
-            tempat_lahir: 'Jakarta',
-            tanggal_lahir: '1990-01-01',
-            jenis_kelamin: 'Laki-laki',
-            alamat: 'Jl. Contoh No. 1',
-            status_perkawinan: 'Menikah',
-            nomor_telepon: '081234567890',
-            email: 'john.doe@tunasesta.com',
-            role: 'karyawan',
-            tanggal_masuk: '2020-01-01',
-            kategori_gaji: 'Bulanan',
-            periode_gaji: 'bulanan',
-            status: 'Aktif',
-            departemen_id_saat_ini: 1,
-            jabatan_id_saat_ini: 1,
-            role_karyawan: 'produksi',
-            departemenSaatIni: {
-              departemen_id: 1,
-              nama_departemen: 'Produksi',
-              menggunakan_shift: true,
-              created_at: '',
-              updated_at: '',
-            },
-            jabatanSaatIni: {
-              jabatan_id: 1,
-              nama_jabatan: 'Operator',
-              created_at: '',
-              updated_at: '',
-            },
-            created_at: '',
-            updated_at: '',
-          },
-          created_at: '',
-          updated_at: '',
-        },
-      ];
-      
-      setAbsensi(mockData);
-      
-      // Hitung statistik
-      setStats({
-        totalKaryawan: 150,
-        hadir: 138,
-        terlambat: 4,
-        izin: 3,
-        cuti: 2,
-        alpha: 3,
-      });
-    } catch (error) {
-      console.error('Error loading absensi:', error);
-      setError('Gagal memuat data absensi');
+      const params: any = {
+        tanggal_absensi: selectedDate,
+      };
+      if (filterDepartemen !== 'all') params.departemen = filterDepartemen;
+      if (filterStatus !== 'all') params.status = filterStatus;
+      if (searchTerm.trim()) params.q = searchTerm.trim();
+
+      const res = await apiClient.getAbsensi(params);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setAbsensi(data);
+    } catch (e: any) {
+      setError(handleApiError(e) || 'Gagal memuat data absensi');
+      setAbsensi([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredAbsensi = absensi.filter(item => {
-    const matchesSearch =
-      item.karyawan?.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.karyawan?.nik.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartemen =
-      filterDepartemen === 'all' || item.karyawan?.departemenSaatIni?.nama_departemen === filterDepartemen;
-    const matchesStatus =
-      filterStatus === 'all' || item.status === filterStatus;
-    
-    return matchesSearch && matchesDepartemen && matchesStatus;
-  });
+  // Kalau backend belum mendukung filter di server, ini tetap aman.
+  const filteredAbsensi = useMemo(() => {
+    return absensi.filter((item) => {
+      const q = searchTerm.toLowerCase();
+      const matchesSearch =
+        !q ||
+        item.karyawan?.nama_lengkap?.toLowerCase().includes(q) ||
+        item.karyawan?.nik?.toLowerCase().includes(q);
+
+      const matchesDepartemen =
+        filterDepartemen === 'all' ||
+        item.karyawan?.departemenSaatIni?.nama_departemen === filterDepartemen;
+
+      const matchesStatus =
+        filterStatus === 'all' || (item.status || '') === filterStatus;
+
+      return matchesSearch && matchesDepartemen && matchesStatus;
+    });
+  }, [absensi, searchTerm, filterDepartemen, filterStatus]);
+
+  // Statistik sederhana dari data yang tampil
+  const stats = useMemo(() => {
+    const total = new Set(
+      filteredAbsensi.map((a) => a.karyawan?.karyawan_id).filter(Boolean)
+    ).size;
+
+    const countBy = (s: string) =>
+      filteredAbsensi.filter((a) => a.status === s).length;
+
+    return {
+      totalKaryawan: total,
+      hadir: countBy('Hadir'),
+      terlambat: countBy('Terlambat'),
+      izin: countBy('Izin'),
+      cuti: countBy('Cuti'),
+      alpha: countBy('Alpha'),
+    };
+  }, [filteredAbsensi]);
 
   return (
     <DashboardLayout>
@@ -191,8 +179,8 @@ export default function AbsensiPage() {
         }
       />
 
-      {/* Filter */}
-      <div className="flex gap-2 mb-4">
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-2 mb-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
           <Input
@@ -200,24 +188,33 @@ export default function AbsensiPage() {
             placeholder="Cari nama atau NIK..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 w-64"
+            className="pl-9 w-72"
           />
         </div>
 
+        <Input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="w-[160px]"
+          aria-label="Tanggal absensi"
+        />
+
         <Select value={filterDepartemen} onValueChange={setFilterDepartemen}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Semua Departemen" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Departemen</SelectItem>
-            <SelectItem value="Produksi">Produksi</SelectItem>
-            <SelectItem value="Human Resources">Human Resources</SelectItem>
-            <SelectItem value="Finance">Finance</SelectItem>
+            {departemenOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="Semua Status" />
           </SelectTrigger>
           <SelectContent>
@@ -229,6 +226,24 @@ export default function AbsensiPage() {
             <SelectItem value="Alpha">Alpha</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Statistik ringkas */}
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-4">
+        <StatPill label="Total" value={stats.totalKaryawan} />
+        <StatPill label="Hadir" value={stats.hadir} />
+        <StatPill label="Terlambat" value={stats.terlambat} />
+        <StatPill label="Izin" value={stats.izin} />
+        <StatPill label="Cuti" value={stats.cuti} />
+        <StatPill label="Alpha" value={stats.alpha} />
       </div>
 
       {/* Tabel */}
@@ -264,12 +279,17 @@ export default function AbsensiPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                     >
-                      <TableCell>{item.karyawan?.nik}</TableCell>
-                      <TableCell>{item.karyawan?.nama_lengkap}</TableCell>
-                      <TableCell>{item.karyawan?.departemenSaatIni?.nama_departemen}</TableCell>
-                   <TableCell>{item.jam_scan_masuk ? formatTime(item.jam_scan_masuk) : '-'}</TableCell>
-                    <TableCell>{item.jam_scan_pulang ? formatTime(item.jam_scan_pulang) : '-'}</TableCell>
-
+                      <TableCell>{item.karyawan?.nik || '-'}</TableCell>
+                      <TableCell>{item.karyawan?.nama_lengkap || '-'}</TableCell>
+                      <TableCell>
+                        {item.karyawan?.departemenSaatIni?.nama_departemen || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {item.jam_scan_masuk ? formatTime(item.jam_scan_masuk) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {item.jam_scan_pulang ? formatTime(item.jam_scan_pulang) : '-'}
+                      </TableCell>
                       <TableCell>
                         <Badge className={getStatusColor(item.status)}>{item.status}</Badge>
                       </TableCell>
@@ -282,5 +302,14 @@ export default function AbsensiPage() {
         </CardContent>
       </Card>
     </DashboardLayout>
+  );
+}
+
+function StatPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border p-3 text-center">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
   );
 }

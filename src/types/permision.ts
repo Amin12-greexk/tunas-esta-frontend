@@ -5,11 +5,11 @@ export interface MenuConfig {
   label: string;
   href: string;
   icon: string;
-  permission?: Permission;
+  permission?: Permissions;
   roles?: User['role'][];
   children?: MenuConfig[];
 }
 
 export interface RolePermissions {
-  [key: string]: Permission[];
+  [key: string]: Permissions[];
 }
