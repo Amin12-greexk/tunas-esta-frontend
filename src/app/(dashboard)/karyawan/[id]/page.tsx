@@ -36,6 +36,16 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
+import Cookies from 'js-cookie';
+
+// API URL - adjust based on your environment
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+
+interface ApiResponse<T> {
+  data?: T;
+  message?: string;
+  error?: string;
+}
 
 export default function KaryawanDetailPage() {
   const params = useParams();
@@ -49,115 +59,70 @@ export default function KaryawanDetailPage() {
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
-    loadKaryawanData();
+    if (params.id) {
+      loadKaryawanData();
+    }
   }, [params.id]);
+
+  const getApiHeaders = () => {
+    const token = Cookies.get('auth_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  };
 
   const loadKaryawanData = async () => {
     try {
       setIsLoading(true);
       setError('');
       
-      // Mock data for now
-      const mockKaryawan: Karyawan = {
-        karyawan_id: Number(params.id),
-        nik: 'NK001',
-        nama_lengkap: 'John Doe',
-        tempat_lahir: 'Jakarta',
-        tanggal_lahir: '1990-01-01',
-        jenis_kelamin: 'Laki-laki',
-        alamat: 'Jl. Contoh No. 123, Jakarta Selatan',
-        status_perkawinan: 'Menikah',
-        nomor_telepon: '081234567890',
-        email: 'john.doe@tunasesta.com',
-        role: 'karyawan',
-        tanggal_masuk: '2020-01-15',
-        kategori_gaji: 'Bulanan',
-        periode_gaji: 'bulanan',
-        jam_kerja_masuk: '08:00:00',
-        jam_kerja_pulang: '17:00:00',
-        status: 'Aktif',
-        departemen_id_saat_ini: 1,
-        jabatan_id_saat_ini: 1,
-        pin_fingerprint: '12345',
-        role_karyawan: 'produksi',
-        departemenSaatIni: {
-          departemen_id: 1,
-          nama_departemen: 'Produksi',
-          menggunakan_shift: true,
-          created_at: '',
-          updated_at: '',
-        },
-        jabatanSaatIni: {
-          jabatan_id: 1,
-          nama_jabatan: 'Operator',
-          created_at: '',
-          updated_at: '',
-        },
-        created_at: '2020-01-15',
-        updated_at: '2024-01-01',
-      };
+      // Fetch karyawan data
+      const karyawanResponse = await fetch(`${API_BASE_URL}/karyawan/${params.id}`, {
+        headers: getApiHeaders(),
+      });
 
-      const mockAbsensi: Absensi[] = [
-        {
-          absensi_id: 1,
-          karyawan_id: Number(params.id),
-          tanggal_absensi: '2024-01-15',
-          jam_scan_masuk: '08:00:00',
-          jam_scan_pulang: '17:15:00',
-          durasi_lembur_menit: 15,
-          status: 'Hadir',
-          jam_lembur: 0.25,
-          jenis_hari: 'weekday',
-          hadir_6_hari_periode: true,
-          upah_lembur: 7500,
-          premi: 20000,
-          uang_makan: 15000,
-          total_gaji_tambahan: 42500,
-          created_at: '',
-          updated_at: '',
-        },
-        {
-          absensi_id: 2,
-          karyawan_id: Number(params.id),
-          tanggal_absensi: '2024-01-14',
-          jam_scan_masuk: '08:05:00',
-          jam_scan_pulang: '17:00:00',
-          durasi_lembur_menit: 0,
-          status: 'Terlambat',
-          jam_lembur: 0,
-          jenis_hari: 'weekday',
-          hadir_6_hari_periode: true,
-          upah_lembur: 0,
-          premi: 0,
-          uang_makan: 15000,
-          total_gaji_tambahan: 15000,
-          created_at: '',
-          updated_at: '',
-        },
-      ];
+      if (!karyawanResponse.ok) {
+        throw new Error(`HTTP error! status: ${karyawanResponse.status}`);
+      }
 
-      const mockGaji: RiwayatGaji[] = [
-        {
-          gaji_id: 1,
-          karyawan_id: Number(params.id),
-          periode: '2024-01',
-          periode_label: 'Januari 2024',
-          tipe_periode: 'bulanan',
-          periode_mulai: '2024-01-01',
-          periode_selesai: '2024-01-31',
-          gaji_final: 5500000,
-          tanggal_pembayaran: '2024-02-01',
-          created_at: '',
-          updated_at: '',
-        },
-      ];
+      const karyawanData: Karyawan = await karyawanResponse.json();
+      setKaryawan(karyawanData);
 
-      setKaryawan(mockKaryawan);
-      setAbsensi(mockAbsensi);
-      setRiwayatGaji(mockGaji);
+      // Fetch attendance data for current month
+      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM format
+      const absensiResponse = await fetch(
+        `${API_BASE_URL}/absensi?karyawan_id=${params.id}&start_date=${currentMonth}-01&end_date=${currentMonth}-31`,
+        {
+          headers: getApiHeaders(),
+        }
+      );
+
+      if (absensiResponse.ok) {
+        const absensiResult = await absensiResponse.json();
+        // Handle pagination response
+        setAbsensi(absensiResult.data || absensiResult || []);
+      }
+
+      // Fetch payroll history
+      const payrollResponse = await fetch(`${API_BASE_URL}/payroll/history/${params.id}`, {
+        headers: getApiHeaders(),
+      });
+
+      if (payrollResponse.ok) {
+        const payrollData: RiwayatGaji[] = await payrollResponse.json();
+        setRiwayatGaji(payrollData || []);
+      }
+
     } catch (error) {
-      console.error('Error loading karyawan:', error);
-      setError('Gagal memuat data karyawan');
+      console.error('Error loading karyawan data:', error);
+      setError(error instanceof Error ? error.message : 'Gagal memuat data karyawan');
     } finally {
       setIsLoading(false);
     }
@@ -171,6 +136,20 @@ export default function KaryawanDetailPage() {
     const alpha = absensi.filter(a => a.status === 'Alpha').length;
     
     return { total, hadir, terlambat, izin, alpha };
+  };
+
+  const handleDownloadCV = async () => {
+    try {
+      // You can implement CV download API call here
+      console.log('Download CV for karyawan:', karyawan?.karyawan_id);
+      // Example API call:
+      // const response = await fetch(`${API_BASE_URL}/karyawan/${params.id}/cv`, {
+      //   headers: apiHeaders,
+      // });
+      // Handle file download...
+    } catch (error) {
+      console.error('Error downloading CV:', error);
+    }
   };
 
   const stats = calculateAttendanceStats();
@@ -196,8 +175,17 @@ export default function KaryawanDetailPage() {
       <DashboardLayout>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error || 'Karyawan tidak ditemukan'}</AlertDescription>
+          <AlertDescription>
+            {error || 'Karyawan tidak ditemukan'}
+          </AlertDescription>
         </Alert>
+        <Button 
+          onClick={loadKaryawanData} 
+          className="mt-4"
+          disabled={isLoading}
+        >
+          {isLoading ? 'Loading...' : 'Coba Lagi'}
+        </Button>
       </DashboardLayout>
     );
   }
@@ -281,7 +269,11 @@ export default function KaryawanDetailPage() {
                   </div>
                 </div>
 
-                <Button className="w-full" variant="outline">
+                <Button 
+                  className="w-full" 
+                  variant="outline"
+                  onClick={handleDownloadCV}
+                >
                   <Download className="h-4 w-4 mr-2" />
                   Download CV
                 </Button>
@@ -351,7 +343,7 @@ export default function KaryawanDetailPage() {
                             <div>
                               <p className="font-medium">{gaji.periode_label}</p>
                               <p className="text-sm text-gray-500">
-                                {formatDate(gaji.tanggal_pembayaran || '', 'dd MMM yyyy')}
+                                {gaji.tanggal_pembayaran ? formatDate(gaji.tanggal_pembayaran, 'dd MMM yyyy') : 'Pending'}
                               </p>
                             </div>
                           </div>
@@ -362,7 +354,16 @@ export default function KaryawanDetailPage() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-gray-500 text-center py-4">Belum ada riwayat gaji</p>
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">Belum ada riwayat gaji</p>
+                      <Button 
+                        className="mt-2" 
+                        variant="outline" 
+                        onClick={loadKaryawanData}
+                      >
+                        Refresh Data
+                      </Button>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -399,8 +400,8 @@ export default function KaryawanDetailPage() {
                       <p className="font-medium">{karyawan.status_perkawinan}</p>
                     </div>
                     <div>
-                      <Label className="text-sm text-gray-500">Agama</Label>
-                      <p className="font-medium">Islam</p>
+                      <Label className="text-sm text-gray-500">Role Karyawan</Label>
+                      <p className="font-medium capitalize">{karyawan.role_karyawan}</p>
                     </div>
                   </div>
                   
@@ -427,44 +428,62 @@ export default function KaryawanDetailPage() {
             <TabsContent value="attendance" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Riwayat Absensi</CardTitle>
-                  <CardDescription>Data kehadiran 30 hari terakhir</CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Riwayat Absensi</CardTitle>
+                      <CardDescription>Data kehadiran bulan ini</CardDescription>
+                    </div>
+                    <Button variant="outline" onClick={loadKaryawanData}>
+                      Refresh
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-2">
-                    {absensi.map((item) => (
-                      <div
-                        key={item.absensi_id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-full ${
-                            item.status === 'Hadir' ? 'bg-green-100' :
-                            item.status === 'Terlambat' ? 'bg-yellow-100' :
-                            item.status === 'Izin' ? 'bg-blue-100' :
-                            'bg-red-100'
-                          }`}>
-                            {item.status === 'Hadir' ? <CheckCircle className="h-4 w-4 text-green-600" /> :
-                             item.status === 'Terlambat' ? <Clock className="h-4 w-4 text-yellow-600" /> :
-                             item.status === 'Izin' ? <AlertCircle className="h-4 w-4 text-blue-600" /> :
-                             <XCircle className="h-4 w-4 text-red-600" />}
+                  {absensi.length > 0 ? (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {absensi.map((item) => (
+                        <div
+                          key={item.absensi_id}
+                          className="flex items-center justify-between p-3 rounded-lg border"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-full ${
+                              item.status === 'Hadir' ? 'bg-green-100' :
+                              item.status === 'Terlambat' ? 'bg-yellow-100' :
+                              item.status === 'Izin' ? 'bg-blue-100' :
+                              'bg-red-100'
+                            }`}>
+                              {item.status === 'Hadir' ? <CheckCircle className="h-4 w-4 text-green-600" /> :
+                               item.status === 'Terlambat' ? <Clock className="h-4 w-4 text-yellow-600" /> :
+                               item.status === 'Izin' ? <AlertCircle className="h-4 w-4 text-blue-600" /> :
+                               <XCircle className="h-4 w-4 text-red-600" />}
+                            </div>
+                            <div>
+                              <p className="font-medium">
+                                {formatDate(item.tanggal_absensi, 'EEEE, dd MMM yyyy')}
+                              </p>
+                              <p className="text-sm text-gray-500">
+                                {item.jam_scan_masuk ? `Masuk: ${item.jam_scan_masuk.toString().substring(11, 16)}` : '-'}
+                                {item.jam_scan_pulang ? ` | Pulang: ${item.jam_scan_pulang.toString().substring(11, 16)}` : ''}
+                              </p>
+                              {item.jam_lembur > 0 && (
+                                <p className="text-xs text-orange-600">
+                                  Lembur: {item.jam_lembur} jam
+                                </p>
+                              )}
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium">
-                              {formatDate(item.tanggal_absensi, 'EEEE, dd MMM yyyy')}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {item.jam_scan_masuk ? `Masuk: ${item.jam_scan_masuk.substring(0, 5)}` : '-'}
-                              {item.jam_scan_pulang ? ` | Pulang: ${item.jam_scan_pulang.substring(0, 5)}` : ''}
-                            </p>
-                          </div>
+                          <Badge className={getStatusColor(item.status)}>
+                            {item.status}
+                          </Badge>
                         </div>
-                        <Badge className={getStatusColor(item.status)}>
-                          {item.status}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">Belum ada data absensi bulan ini</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -473,36 +492,56 @@ export default function KaryawanDetailPage() {
             <TabsContent value="payroll" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Riwayat Penggajian</CardTitle>
-                  <CardDescription>Data gaji 12 bulan terakhir</CardDescription>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle>Riwayat Penggajian</CardTitle>
+                      <CardDescription>Data gaji historis</CardDescription>
+                    </div>
+                    <Button variant="outline" onClick={loadKaryawanData}>
+                      Refresh
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {riwayatGaji.map((gaji) => (
-                      <div
-                        key={gaji.gaji_id}
-                        className="flex items-center justify-between p-4 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="p-2 rounded-lg bg-green-100 text-green-600">
-                            <CreditCard className="h-5 w-5" />
+                  {riwayatGaji.length > 0 ? (
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {riwayatGaji.map((gaji) => (
+                        <div
+                          key={gaji.gaji_id}
+                          className="flex items-center justify-between p-4 rounded-lg border hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                          onClick={() => {
+                            // Navigate to slip gaji detail if needed
+                            // router.push(`/payroll/slip/${gaji.gaji_id}`);
+                          }}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="p-2 rounded-lg bg-green-100 text-green-600">
+                              <CreditCard className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{gaji.periode_label}</p>
+                              <p className="text-sm text-gray-500">
+                                {gaji.tipe_periode && (
+                                  <span className="capitalize">{gaji.tipe_periode} </span>
+                                )}
+                                • Dibayar: {gaji.tanggal_pembayaran ? formatDate(gaji.tanggal_pembayaran, 'dd MMM yyyy') : 'Pending'}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium">{gaji.periode_label}</p>
-                            <p className="text-sm text-gray-500">
-                              Dibayar: {gaji.tanggal_pembayaran ? formatDate(gaji.tanggal_pembayaran, 'dd MMM yyyy') : 'Pending'}
-                            </p>
+                          <div className="text-right">
+                            <p className="font-semibold">{formatCurrency(gaji.gaji_final || 0)}</p>
+                            <Badge className="mt-1" variant={gaji.tanggal_pembayaran ? 'default' : 'secondary'}>
+                              {gaji.tanggal_pembayaran ? 'Paid' : 'Pending'}
+                            </Badge>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-semibold">{formatCurrency(gaji.gaji_final || 0)}</p>
-                          <Badge className="mt-1">
-                            {gaji.tanggal_pembayaran ? 'Paid' : 'Pending'}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500">Belum ada riwayat penggajian</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

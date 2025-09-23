@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getInitials, cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +16,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { getInitials, cn } from '@/lib/utils';
 import {
   Menu,
   Bell,
@@ -25,16 +26,139 @@ import {
   Moon,
   Sun,
   Monitor,
+  Users,
+  Building2,
+  FileText,
+  CreditCard,
+  Calendar,
+  BarChart3,
+  Clock,
+  X,
+  ArrowRight,
+  CommandIcon as Command
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import Cookies from 'js-cookie';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
 
+interface SearchResult {
+  id: string;
+  type: 'employee' | 'department' | 'menu';
+  title: string;
+  subtitle?: string;
+  description?: string;
+  icon: React.ReactNode;
+  href: string;
+  badge?: string;
+}
+
+interface Employee {
+  karyawan_id: number;
+  nik: string;
+  nama_lengkap: string;
+  email: string;
+  departemenSaatIni?: {
+    nama_departemen: string;
+  };
+  jabatanSaatIni?: {
+    nama_jabatan: string;
+  };
+  status: string;
+}
+
+interface Department {
+  departemen_id: number;
+  nama_departemen: string;
+  karyawan_count?: number;
+}
+
+const menuItems: SearchResult[] = [
+  {
+    id: 'dashboard',
+    type: 'menu',
+    title: 'Dashboard',
+    description: 'Halaman utama dengan ringkasan data',
+    icon: <BarChart3 className="h-4 w-4" />,
+    href: '/dashboard'
+  },
+  {
+    id: 'employees',
+    type: 'menu',
+    title: 'Karyawan',
+    description: 'Kelola data karyawan',
+    icon: <Users className="h-4 w-4" />,
+    href: '/karyawan'
+  },
+  {
+    id: 'attendance',
+    type: 'menu',
+    title: 'Absensi',
+    description: 'Monitoring kehadiran karyawan',
+    icon: <Clock className="h-4 w-4" />,
+    href: '/absensi'
+  },
+  {
+    id: 'payroll',
+    type: 'menu',
+    title: 'Penggajian',
+    description: 'Proses dan kelola gaji karyawan',
+    icon: <CreditCard className="h-4 w-4" />,
+    href: '/payroll'
+  },
+  {
+    id: 'departments',
+    type: 'menu',
+    title: 'Departemen',
+    description: 'Kelola departemen perusahaan',
+    icon: <Building2 className="h-4 w-4" />,
+    href: '/master/departemen'
+  },
+  {
+    id: 'schedule',
+    type: 'menu',
+    title: 'Jadwal Shift',
+    description: 'Atur jadwal kerja karyawan',
+    icon: <Calendar className="h-4 w-4" />,
+    href: '/schedule'
+  },
+  {
+    id: 'reports',
+    type: 'menu',
+    title: 'Laporan',
+    description: 'Laporan dan analisis data',
+    icon: <FileText className="h-4 w-4" />,
+    href: '/reports'
+  },
+  {
+    id: 'settings',
+    type: 'menu',
+    title: 'Pengaturan',
+    description: 'Konfigurasi sistem',
+    icon: <Settings className="h-4 w-4" />,
+    href: '/settings'
+  }
+];
+
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  
+  const searchRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const [notifications] = useState([
     {
       id: 1,
@@ -51,6 +175,203 @@ export function Header({ onMenuClick }: HeaderProps) {
       time: '1 jam lalu',
     },
   ]);
+
+  // Load data for search
+  useEffect(() => {
+    loadEmployees();
+    loadDepartments();
+  }, []);
+
+  // Handle click outside to close search
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSearchResults(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        inputRef.current?.focus();
+      }
+      
+      if (event.key === 'Escape') {
+        setShowSearchResults(false);
+        inputRef.current?.blur();
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const getApiHeaders = () => {
+    const token = Cookies.get('auth_token');
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
+    };
+  };
+
+  const loadEmployees = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/karyawan`, {
+        headers: getApiHeaders(),
+      });
+      if (response.ok) {
+        const data: Employee[] = await response.json();
+        setEmployees(data.filter(emp => emp.status === 'Aktif'));
+      }
+    } catch (error) {
+      console.error('Error loading employees:', error);
+    }
+  };
+
+  const loadDepartments = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/departemen`, {
+        headers: getApiHeaders(),
+      });
+      if (response.ok) {
+        const data: Department[] = await response.json();
+        setDepartments(data);
+      }
+    } catch (error) {
+      console.error('Error loading departments:', error);
+    }
+  };
+
+  const performSearch = (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    const results: SearchResult[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    // Search employees
+    employees.forEach(emp => {
+      if (
+        emp.nama_lengkap.toLowerCase().includes(lowerQuery) ||
+        emp.nik.toLowerCase().includes(lowerQuery) ||
+        emp.email.toLowerCase().includes(lowerQuery) ||
+        emp.departemenSaatIni?.nama_departemen.toLowerCase().includes(lowerQuery) ||
+        emp.jabatanSaatIni?.nama_jabatan.toLowerCase().includes(lowerQuery)
+      ) {
+        results.push({
+          id: `emp-${emp.karyawan_id}`,
+          type: 'employee',
+          title: emp.nama_lengkap,
+          subtitle: emp.nik,
+          description: `${emp.jabatanSaatIni?.nama_jabatan || ''} - ${emp.departemenSaatIni?.nama_departemen || ''}`,
+          icon: <User className="h-4 w-4" />,
+          href: `/karyawan/${emp.karyawan_id}`,
+          badge: emp.status
+        });
+      }
+    });
+
+    // Search departments
+    departments.forEach(dept => {
+      if (dept.nama_departemen.toLowerCase().includes(lowerQuery)) {
+        results.push({
+          id: `dept-${dept.departemen_id}`,
+          type: 'department',
+          title: dept.nama_departemen,
+          subtitle: 'Departemen',
+          description: `${dept.karyawan_count || 0} karyawan`,
+          icon: <Building2 className="h-4 w-4" />,
+          href: `/master/departemen?highlight=${dept.departemen_id}`,
+          badge: 'Departemen'
+        });
+      }
+    });
+
+    // Search menu items
+    menuItems.forEach(item => {
+      if (
+        item.title.toLowerCase().includes(lowerQuery) ||
+        item.description?.toLowerCase().includes(lowerQuery)
+      ) {
+        results.push(item);
+      }
+    });
+
+    // Sort results by relevance
+    results.sort((a, b) => {
+      const aExact = a.title.toLowerCase() === lowerQuery;
+      const bExact = b.title.toLowerCase() === lowerQuery;
+      if (aExact && !bExact) return -1;
+      if (!aExact && bExact) return 1;
+      
+      const aStarts = a.title.toLowerCase().startsWith(lowerQuery);
+      const bStarts = b.title.toLowerCase().startsWith(lowerQuery);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      
+      return a.title.localeCompare(b.title);
+    });
+
+    setSearchResults(results.slice(0, 8)); // Limit to 8 results
+    setIsSearching(false);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    setShowSearchResults(true);
+    
+    // Debounce search
+    const timeoutId = setTimeout(() => {
+      performSearch(query);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchResults.length > 0) {
+      router.push(searchResults[0].href);
+      setShowSearchResults(false);
+      setSearchQuery('');
+    }
+  };
+
+  const handleResultClick = (result: SearchResult) => {
+    router.push(result.href);
+    setShowSearchResults(false);
+    setSearchQuery('');
+  };
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchResults(false);
+  };
+
+  const getResultIcon = (result: SearchResult) => {
+    switch (result.type) {
+      case 'employee':
+        return <div className="p-1.5 rounded-md bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300"><User className="h-3 w-3" /></div>;
+      case 'department':
+        return <div className="p-1.5 rounded-md bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300"><Building2 className="h-3 w-3" /></div>;
+      case 'menu':
+        return <div className="p-1.5 rounded-md bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300">{result.icon}</div>;
+      default:
+        return result.icon;
+    }
+  };
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -101,17 +422,133 @@ export function Header({ onMenuClick }: HeaderProps) {
           <span className="sr-only">Toggle menu</span>
         </Button>
 
-        {/* Search */}
-<div className="flex flex-1 justify-center">
-  <div className="relative w-full max-w-lg">
-    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
-    <input
-      type="search"
-      placeholder="Cari karyawan, departemen..."
-      className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 pl-9 pr-4 py-2 text-sm focus:border-tunas-blue-500 focus:outline-none focus:ring-2 focus:ring-tunas-blue-500/20"
-    />
-  </div>
-</div>
+        {/* Enhanced Search */}
+        <div className="flex flex-1 justify-center">
+          <div ref={searchRef} className="relative w-full max-w-lg">
+            <form onSubmit={handleSearchSubmit}>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                <input
+                  ref={inputRef}
+                  type="search"
+                  placeholder="Cari karyawan, departemen, menu... (Ctrl+K)"
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  onFocus={() => setShowSearchResults(true)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 pl-9 pr-10 py-2 text-sm focus:border-tunas-blue-500 focus:outline-none focus:ring-2 focus:ring-tunas-blue-500/20"
+                />
+                {searchQuery && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={clearSearch}
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
+                    <Command className="h-3 w-3" />K
+                  </kbd>
+                </div>
+              </div>
+            </form>
+
+            {/* Search Results */}
+            <AnimatePresence>
+              {showSearchResults && (searchQuery || searchResults.length > 0) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-full mt-2 w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50 max-h-96 overflow-y-auto"
+                >
+                  {isSearching ? (
+                    <div className="p-4 text-center text-sm text-gray-500">
+                      Mencari...
+                    </div>
+                  ) : searchResults.length > 0 ? (
+                    <>
+                      <div className="p-2 text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
+                        {searchResults.length} hasil ditemukan
+                      </div>
+                      {searchResults.map((result, index) => (
+                        <motion.button
+                          key={result.id}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          onClick={() => handleResultClick(result)}
+                          className="w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
+                        >
+                          {getResultIcon(result)}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                {result.title}
+                              </p>
+                              {result.badge && (
+                                <Badge variant="outline" className="text-xs">
+                                  {result.badge}
+                                </Badge>
+                              )}
+                            </div>
+                            {result.subtitle && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                {result.subtitle}
+                              </p>
+                            )}
+                            {result.description && (
+                              <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                                {result.description}
+                              </p>
+                            )}
+                          </div>
+                          <ArrowRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        </motion.button>
+                      ))}
+                    </>
+                  ) : searchQuery ? (
+                    <div className="p-4 text-center">
+                      <p className="text-sm text-gray-500">Tidak ada hasil ditemukan</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Coba kata kunci yang berbeda
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-4">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
+                        Menu Populer
+                      </p>
+                      {menuItems.slice(0, 4).map((item, index) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleResultClick(item)}
+                          className="w-full p-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3 rounded-md"
+                        >
+                          <div className="p-1.5 rounded-md bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                            {item.icon}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                              {item.title}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {item.description}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
 
       {/* Right: Theme, Notifications, User */}
@@ -187,11 +624,6 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </p>
               </DropdownMenuItem>
             ))}
-            {notifications.length === 0 && (
-              <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                Tidak ada notifikasi baru
-              </div>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

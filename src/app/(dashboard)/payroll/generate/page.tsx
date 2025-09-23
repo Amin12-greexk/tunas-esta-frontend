@@ -1,7 +1,7 @@
 // src/app/(dashboard)/payroll/generate/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/dashboard-layout';
 import { PageHeader } from '@/components/common/page-header';
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -32,75 +33,244 @@ import {
   CreditCard,
   FileText,
   TrendingUp,
-  Clock
+  Clock,
+  Building2,
+  UserCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import Cookies from 'js-cookie';
+
+// API URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 interface GenerateConfig {
   periode: string;
   tipePeriode: 'bulanan' | 'mingguan' | 'harian';
+  tanggalMulai?: string;
+  tanggalSelesai?: string;
   departemen: string[];
+  karyawanIds: string[];
   includeOvertime: boolean;
   includeAllowance: boolean;
   includeDeduction: boolean;
   autoSendSlip: boolean;
 }
 
+interface Departemen {
+  departemen_id: number;
+  nama_departemen: string;
+  karyawan_count?: number;
+}
+
+interface Karyawan {
+  karyawan_id: number;
+  nik: string;
+  nama_lengkap: string;
+  email: string;
+  status: string;
+  departemenSaatIni?: {
+    nama_departemen: string;
+  };
+}
+
+interface GenerateResult {
+  success_count: number;
+  error_count: number;
+  results: any[];
+  errors: any[];
+}
+
+interface PreviewData {
+  periode: string;
+  totalKaryawan: number;
+  estimatedTotal: number;
+  karyawanList: Karyawan[];
+  departemenStats: { [key: string]: number };
+}
+
 export default function PayrollGeneratePage() {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [step, setStep] = useState(1);
-  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null);
+  const [departemenList, setDepartemenList] = useState<Departemen[]>([]);
+  const [karyawanList, setKaryawanList] = useState<Karyawan[]>([]);
   
   const [config, setConfig] = useState<GenerateConfig>({
-    periode: '2024-01',
+    periode: new Date().toISOString().slice(0, 7), // Current month YYYY-MM
     tipePeriode: 'bulanan',
     departemen: [],
+    karyawanIds: [],
     includeOvertime: true,
     includeAllowance: true,
     includeDeduction: true,
     autoSendSlip: false,
   });
 
-  const departments = [
-    { id: '1', nama: 'Produksi' },
-    { id: '2', nama: 'Human Resources' },
-    { id: '3', nama: 'Finance' },
-    { id: '4', nama: 'Quality Control' },
-  ];
+  useEffect(() => {
+    loadDepartemen();
+    loadKaryawan();
+  }, []);
+
+  const getApiHeaders = () => {
+    const token = Cookies.get('auth_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return headers;
+  };
+
+  const loadDepartemen = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/departemen`, {
+        headers: getApiHeaders(),
+      });
+
+      if (response.ok) {
+        const data: Departemen[] = await response.json();
+        setDepartemenList(data);
+      }
+    } catch (error) {
+      console.error('Error loading departemen:', error);
+    }
+  };
+
+  const loadKaryawan = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/karyawan`, {
+        headers: getApiHeaders(),
+      });
+
+      if (response.ok) {
+        const data: Karyawan[] = await response.json();
+        // Filter only active employees
+        const activeKaryawan = data.filter(k => k.status === 'Aktif');
+        setKaryawanList(activeKaryawan);
+      }
+    } catch (error) {
+      console.error('Error loading karyawan:', error);
+    }
+  };
 
   const handleDepartmentToggle = (deptId: string) => {
+    setConfig(prev => {
+      const newDepartemen = prev.departemen.includes(deptId)
+        ? prev.departemen.filter(id => id !== deptId)
+        : [...prev.departemen, deptId];
+
+      // Auto select/deselect karyawan from this department
+      const deptKaryawan = karyawanList
+        .filter(k => k.departemenSaatIni && k.departemenSaatIni.nama_departemen === 
+          departemenList.find(d => d.departemen_id.toString() === deptId)?.nama_departemen)
+        .map(k => k.karyawan_id.toString());
+
+      let newKaryawanIds = [...prev.karyawanIds];
+      
+      if (newDepartemen.includes(deptId)) {
+        // Add all karyawan from this department
+        newKaryawanIds = [...new Set([...newKaryawanIds, ...deptKaryawan])];
+      } else {
+        // Remove all karyawan from this department
+        newKaryawanIds = newKaryawanIds.filter(id => !deptKaryawan.includes(id));
+      }
+
+      return {
+        ...prev,
+        departemen: newDepartemen,
+        karyawanIds: newKaryawanIds
+      };
+    });
+  };
+
+  const handleKaryawanToggle = (karyawanId: string) => {
     setConfig(prev => ({
       ...prev,
-      departemen: prev.departemen.includes(deptId)
-        ? prev.departemen.filter(id => id !== deptId)
-        : [...prev.departemen, deptId]
+      karyawanIds: prev.karyawanIds.includes(karyawanId)
+        ? prev.karyawanIds.filter(id => id !== karyawanId)
+        : [...prev.karyawanIds, karyawanId]
     }));
   };
 
+  const handleSelectAllKaryawan = () => {
+    const allKaryawanIds = karyawanList.map(k => k.karyawan_id.toString());
+    const allDepartemenIds = departemenList.map(d => d.departemen_id.toString());
+    
+    setConfig(prev => ({
+      ...prev,
+      karyawanIds: allKaryawanIds,
+      departemen: allDepartemenIds
+    }));
+  };
+
+  const handleDeselectAllKaryawan = () => {
+    setConfig(prev => ({
+      ...prev,
+      karyawanIds: [],
+      departemen: []
+    }));
+  };
+
+  const generateDateRange = () => {
+    if (config.tipePeriode === 'bulanan') {
+      const [year, month] = config.periode.split('-');
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 0);
+      
+      return {
+        tanggal_mulai: startDate.toISOString().split('T')[0],
+        tanggal_selesai: endDate.toISOString().split('T')[0]
+      };
+    } else {
+      // For weekly/daily, use custom date range
+      return {
+        tanggal_mulai: config.tanggalMulai || config.periode + '-01',
+        tanggal_selesai: config.tanggalSelesai || config.periode + '-31'
+      };
+    }
+  };
+
   const handlePreview = async () => {
+    if (config.karyawanIds.length === 0) {
+      toast({
+        title: 'Peringatan',
+        description: 'Pilih minimal satu karyawan untuk diproses',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
-      setIsGenerating(true);
+      setIsLoading(true);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Mock preview data
+      // Get selected karyawan details
+      const selectedKaryawan = karyawanList.filter(k => 
+        config.karyawanIds.includes(k.karyawan_id.toString())
+      );
+
+      // Calculate department statistics
+      const deptStats: { [key: string]: number } = {};
+      selectedKaryawan.forEach(k => {
+        const deptName = k.departemenSaatIni?.nama_departemen || 'Unknown';
+        deptStats[deptName] = (deptStats[deptName] || 0) + 1;
+      });
+
+      // Estimate total (basic calculation - could be enhanced with actual salary data)
+      const estimatedSalaryPerEmployee = 3500000; // Average estimate
+      const estimatedTotal = selectedKaryawan.length * estimatedSalaryPerEmployee;
+
       setPreviewData({
         periode: config.periode,
-        totalKaryawan: 142,
-        totalGajiPokok: 650000000,
-        totalLembur: 45000000,
-        totalTunjangan: 85000000,
-        totalPotongan: 12000000,
-        totalBersih: 768000000,
-        details: [
-          { komponen: 'Gaji Pokok', jumlah: 650000000, karyawan: 142 },
-          { komponen: 'Lembur', jumlah: 45000000, karyawan: 89 },
-          { komponen: 'Premi', jumlah: 28000000, karyawan: 120 },
-          { komponen: 'Uang Makan', jumlah: 57000000, karyawan: 142 },
-          { komponen: 'Potongan', jumlah: -12000000, karyawan: 15 },
-        ]
+        totalKaryawan: selectedKaryawan.length,
+        estimatedTotal,
+        karyawanList: selectedKaryawan,
+        departemenStats: deptStats
       });
       
       setStep(2);
@@ -111,32 +281,87 @@ export default function PayrollGeneratePage() {
         variant: 'destructive',
       });
     } finally {
-      setIsGenerating(false);
+      setIsLoading(false);
     }
   };
 
   const handleGenerate = async () => {
+    if (!previewData) return;
+
     try {
       setIsGenerating(true);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const dateRange = generateDateRange();
+      
+      // Choose the appropriate endpoint based on periode type
+      let endpoint = '';
+      let payload = {};
+
+      if (config.tipePeriode === 'bulanan') {
+        // Use bulk generate for monthly
+        endpoint = `${API_BASE_URL}/payroll/bulk-generate`;
+        payload = {
+          periode: config.periode,
+          karyawan_ids: config.karyawanIds.map(id => parseInt(id))
+        };
+      } else {
+        // Use generate-batch for weekly/daily
+        endpoint = `${API_BASE_URL}/payroll/generate-batch`;
+        payload = {
+          tipe_periode: config.tipePeriode,
+          tanggal: dateRange.tanggal_mulai
+        };
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: getApiHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const result: GenerateResult = await response.json();
       
       toast({
         title: 'Berhasil',
-        description: `Gaji untuk ${previewData.totalKaryawan} karyawan berhasil digenerate`,
+        description: `Gaji untuk ${result.success_count} karyawan berhasil digenerate. ${result.error_count > 0 ? `${result.error_count} error.` : ''}`,
+        variant: result.error_count > 0 ? 'destructive' : 'default',
       });
+
+      // Show detailed results if there are errors
+      if (result.error_count > 0) {
+        console.log('Generation errors:', result.errors);
+      }
       
       router.push('/payroll');
     } catch (error) {
+      console.error('Error generating payroll:', error);
       toast({
         title: 'Error',
-        description: 'Gagal generate gaji',
+        description: error instanceof Error ? error.message : 'Gagal generate gaji',
         variant: 'destructive',
       });
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const getSelectedKaryawanByDepartment = () => {
+    const selectedKaryawan = karyawanList.filter(k => 
+      config.karyawanIds.includes(k.karyawan_id.toString())
+    );
+
+    const grouped: { [key: string]: Karyawan[] } = {};
+    selectedKaryawan.forEach(k => {
+      const deptName = k.departemenSaatIni?.nama_departemen || 'Unknown';
+      if (!grouped[deptName]) grouped[deptName] = [];
+      grouped[deptName].push(k);
+    });
+
+    return grouped;
   };
 
   const breadcrumbs = [
@@ -174,19 +399,33 @@ export default function PayrollGeneratePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="periode">Periode Gaji</Label>
-                    <Select 
-                      value={config.periode} 
-                      onValueChange={(value) => setConfig({ ...config, periode: value })}
-                    >
-                      <SelectTrigger id="periode">
-                        <SelectValue placeholder="Pilih periode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="2024-01">Januari 2024</SelectItem>
-                        <SelectItem value="2023-12">Desember 2023</SelectItem>
-                        <SelectItem value="2023-11">November 2023</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {config.tipePeriode === 'bulanan' ? (
+                      <Input
+                        id="periode"
+                        type="month"
+                        value={config.periode}
+                        onChange={(e) => setConfig({ ...config, periode: e.target.value })}
+                      />
+                    ) : (
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <div>
+                          <Label className="text-xs">Tanggal Mulai</Label>
+                          <Input
+                            type="date"
+                            value={config.tanggalMulai || ''}
+                            onChange={(e) => setConfig({ ...config, tanggalMulai: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Tanggal Selesai</Label>
+                          <Input
+                            type="date"
+                            value={config.tanggalSelesai || ''}
+                            onChange={(e) => setConfig({ ...config, tanggalSelesai: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -208,30 +447,83 @@ export default function PayrollGeneratePage() {
                 </div>
 
                 {/* Department Selection */}
-                <div className="space-y-2">
-                  <Label>Pilih Departemen</Label>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {departments.map(dept => (
-                      <div key={dept.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={dept.id}
-                          checked={config.departemen.includes(dept.id)}
-                          onCheckedChange={() => handleDepartmentToggle(dept.id)}
-                        />
-                        <label
-                          htmlFor={dept.id}
-                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                          {dept.nama}
-                        </label>
-                      </div>
-                    ))}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Pilih Departemen</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSelectAllKaryawan}
+                      >
+                        Pilih Semua
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDeselectAllKaryawan}
+                      >
+                        Hapus Semua
+                      </Button>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500">
-                    {config.departemen.length === 0 
-                      ? 'Pilih semua departemen jika kosong'
-                      : `${config.departemen.length} departemen dipilih`}
-                  </p>
+                  
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {departemenList.map(dept => {
+                      const deptKaryawanCount = karyawanList.filter(k => 
+                        k.departemenSaatIni?.nama_departemen === dept.nama_departemen
+                      ).length;
+                      
+                      return (
+                        <div key={dept.departemen_id} className="flex items-center justify-between p-3 rounded-lg border">
+                          <div className="flex items-center space-x-3">
+                            <Checkbox
+                              id={dept.departemen_id.toString()}
+                              checked={config.departemen.includes(dept.departemen_id.toString())}
+                              onCheckedChange={() => handleDepartmentToggle(dept.departemen_id.toString())}
+                            />
+                            <div>
+                              <label
+                                htmlFor={dept.departemen_id.toString()}
+                                className="text-sm font-medium cursor-pointer"
+                              >
+                                {dept.nama_departemen}
+                              </label>
+                              <p className="text-xs text-gray-500">
+                                {deptKaryawanCount} karyawan aktif
+                              </p>
+                            </div>
+                          </div>
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Selected Employees Summary */}
+                <div className="space-y-2">
+                  <Label>Karyawan Terpilih ({config.karyawanIds.length})</Label>
+                  {config.karyawanIds.length > 0 ? (
+                    <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-50 rounded-lg">
+                      {Object.entries(getSelectedKaryawanByDepartment()).map(([deptName, karyawans]) => (
+                        <div key={deptName}>
+                          <p className="text-sm font-medium text-gray-700">{deptName} ({karyawans.length})</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {karyawans.map(k => (
+                              <Badge key={k.karyawan_id} variant="secondary" className="text-xs">
+                                {k.nik} - {k.nama_lengkap}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 italic">Belum ada karyawan yang dipilih</p>
+                  )}
                 </div>
 
                 {/* Components Configuration */}
@@ -317,9 +609,9 @@ export default function PayrollGeneratePage() {
               </Button>
               <Button
                 onClick={handlePreview}
-                disabled={isGenerating}
+                disabled={isLoading || config.karyawanIds.length === 0}
               >
-                {isGenerating ? (
+                {isLoading ? (
                   <>
                     <LoadingSpinner size="sm" />
                     <span className="ml-2">Loading...</span>
@@ -344,7 +636,10 @@ export default function PayrollGeneratePage() {
               <CheckCircle2 className="h-4 w-4 text-green-600" />
               <AlertTitle>Preview Kalkulasi Gaji</AlertTitle>
               <AlertDescription>
-                Periode: {formatDate(config.periode + '-01', 'MMMM yyyy')}
+                Periode: {config.tipePeriode === 'bulanan' 
+                  ? formatDate(config.periode + '-01', 'MMMM yyyy')
+                  : `${config.tanggalMulai} s/d ${config.tanggalSelesai}`
+                }
               </AlertDescription>
             </Alert>
 
@@ -366,16 +661,10 @@ export default function PayrollGeneratePage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-600">Total Gaji Kotor</p>
-                      <p className="text-2xl font-bold">
-                        {formatCurrency(
-                          (previewData?.totalGajiPokok || 0) + 
-                          (previewData?.totalLembur || 0) + 
-                          (previewData?.totalTunjangan || 0)
-                        )}
-                      </p>
+                      <p className="text-sm text-gray-600">Departemen Terlibat</p>
+                      <p className="text-2xl font-bold">{Object.keys(previewData?.departemenStats || {}).length}</p>
                     </div>
-                    <TrendingUp className="h-8 w-8 text-gray-400" />
+                    <Building2 className="h-8 w-8 text-gray-400" />
                   </div>
                 </CardContent>
               </Card>
@@ -384,9 +673,9 @@ export default function PayrollGeneratePage() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-600">Total Gaji Bersih</p>
+                      <p className="text-sm text-gray-600">Estimasi Total</p>
                       <p className="text-2xl font-bold text-green-600">
-                        {formatCurrency(previewData?.totalBersih || 0)}
+                        {formatCurrency(previewData?.estimatedTotal || 0)}
                       </p>
                     </div>
                     <CreditCard className="h-8 w-8 text-gray-400" />
@@ -395,47 +684,37 @@ export default function PayrollGeneratePage() {
               </Card>
             </div>
 
-            {/* Detail Breakdown */}
+            {/* Department Breakdown */}
             <Card>
               <CardHeader>
-                <CardTitle>Detail Komponen Gaji</CardTitle>
+                <CardTitle>Breakdown per Departemen</CardTitle>
                 <CardDescription>
-                  Breakdown perhitungan gaji untuk periode ini
+                  Distribusi karyawan yang akan diproses
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {previewData?.details.map((item: any, index: number) => (
+                  {Object.entries(previewData?.departemenStats || {}).map(([deptName, count], index) => (
                     <motion.div
-                      key={index}
+                      key={deptName}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.1 }}
                       className="flex items-center justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-800"
                     >
                       <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-lg ${
-                          item.jumlah < 0 
-                            ? 'bg-red-100 text-red-600' 
-                            : 'bg-blue-100 text-blue-600'
-                        }`}>
-                          {item.jumlah < 0 ? (
-                            <TrendingUp className="h-5 w-5 rotate-180" />
-                          ) : (
-                            <TrendingUp className="h-5 w-5" />
-                          )}
+                        <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                          <Building2 className="h-5 w-5" />
                         </div>
                         <div>
-                          <p className="font-medium">{item.komponen}</p>
+                          <p className="font-medium">{deptName}</p>
                           <p className="text-sm text-gray-500">
-                            {item.karyawan} karyawan
+                            {count} karyawan
                           </p>
                         </div>
                       </div>
-                      <span className={`text-lg font-semibold ${
-                        item.jumlah < 0 ? 'text-red-600' : 'text-gray-900'
-                      }`}>
-                        {formatCurrency(Math.abs(item.jumlah))}
+                      <span className="text-lg font-semibold">
+                        {formatCurrency(count * 3500000)} {/* Estimated per dept */}
                       </span>
                     </motion.div>
                   ))}
@@ -443,11 +722,45 @@ export default function PayrollGeneratePage() {
 
                 <div className="mt-6 pt-6 border-t">
                   <div className="flex items-center justify-between">
-                    <span className="text-lg font-semibold">Total Gaji Bersih</span>
+                    <span className="text-lg font-semibold">Estimasi Total</span>
                     <span className="text-2xl font-bold text-green-600">
-                      {formatCurrency(previewData?.totalBersih || 0)}
+                      {formatCurrency(previewData?.estimatedTotal || 0)}
                     </span>
                   </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    * Estimasi berdasarkan rata-rata gaji. Nilai aktual akan dihitung berdasarkan data absensi dan komponen gaji.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Selected Employees List */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Daftar Karyawan ({previewData?.karyawanList.length})</CardTitle>
+                <CardDescription>
+                  Karyawan yang akan diproses penggajiannya
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-60 overflow-y-auto space-y-2">
+                  {previewData?.karyawanList.map((karyawan) => (
+                    <div
+                      key={karyawan.karyawan_id}
+                      className="flex items-center justify-between p-3 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <UserCheck className="h-4 w-4 text-green-600" />
+                        <div>
+                          <p className="font-medium">{karyawan.nama_lengkap}</p>
+                          <p className="text-sm text-gray-500">
+                            {karyawan.nik} • {karyawan.departemenSaatIni?.nama_departemen}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline">{karyawan.email}</Badge>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -463,10 +776,10 @@ export default function PayrollGeneratePage() {
               <div className="flex gap-4">
                 <Button
                   variant="outline"
-                  onClick={() => {}}
+                  onClick={() => window.print()}
                 >
                   <FileText className="h-4 w-4 mr-2" />
-                  Download Preview
+                  Print Preview
                 </Button>
                 <Button
                   onClick={handleGenerate}
