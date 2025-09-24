@@ -150,26 +150,6 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
-    id: 'reports',
-    label: 'Laporan',
-    icon: BarChart3,
-    roles: ['it_dev', 'hr', 'direktur'],
-    children: [
-      {
-        id: 'attendance-report',
-        label: 'Laporan Absensi',
-        href: '/reports/attendance',
-        icon: Calendar,
-      },
-      {
-        id: 'payroll-report',
-        label: 'Laporan Gaji',
-        href: '/reports/payroll',
-        icon: CreditCard,
-      },
-    ],
-  },
-  {
     id: 'settings',
     label: 'Pengaturan',
     icon: Settings,

@@ -26,7 +26,7 @@ import {
 import Cookies from 'js-cookie';
 
 // API URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 
 interface DetailGaji {
   detail_gaji_id: number;
