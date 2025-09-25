@@ -68,18 +68,32 @@ export default function KaryawanPage() {
   }, []);
 
   const loadKaryawan = async () => {
-    try {
-      setIsLoading(true);
-      setError('');
-      const res = await apiClient.getKaryawan();
-      const data = Array.isArray(res.data) ? res.data : [];
-      setKaryawan(data);
-    } catch (e: any) {
-      setError(handleApiError(e) || 'Gagal memuat data karyawan');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  try {
+    setIsLoading(true);
+    setError('');
+
+    const res = await apiClient.getKaryawan();
+
+    // handle payload yang mungkin { data: [...] }
+    const raw = (res.data && Array.isArray(res.data) ? res.data
+               : res.data?.data && Array.isArray(res.data.data) ? res.data.data
+               : []) as any[];
+
+    // normalisasi: snake_case -> camelCase yang dipakai komponen
+    const normalized: Karyawan[] = raw.map((it: any) => ({
+      ...it,
+      departemenSaatIni: it.departemenSaatIni ?? it.departemen_saat_ini ?? null,
+      jabatanSaatIni: it.jabatanSaatIni ?? it.jabatan_saat_ini ?? null,
+    }));
+
+    setKaryawan(normalized);
+  } catch (e: any) {
+    setError(handleApiError(e) || 'Gagal memuat data karyawan');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const loadDepartemen = async () => {
     try {
