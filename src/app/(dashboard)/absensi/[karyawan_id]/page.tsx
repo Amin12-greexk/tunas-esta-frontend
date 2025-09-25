@@ -34,7 +34,7 @@ import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Karyawan } from '@/types/karyawan';
 import { Absensi } from '@/types/absensi';
-import { getInitials, formatDate, formatTime, formatCurrency, getStatusColor } from '@/lib/utils';
+import { getInitials, formatDate, formatCurrency, getStatusColor } from '@/lib/utils';
 import { apiClient } from '@/lib/api';
 import { toast } from '@/hooks/use-toast';
 import { 
@@ -56,19 +56,20 @@ import {
 import { motion } from 'framer-motion';
 
 export default function AbsensiKaryawanDetailPage() {
-  const params = useParams();
+  // ✅ generic <{ karyawan_id: string }>
+  const { karyawan_id } = useParams<{ karyawan_id: string }>();
   const router = useRouter();
+
   const [karyawan, setKaryawan] = useState<Karyawan | null>(null);
   const [absensiData, setAbsensiData] = useState<Absensi[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(
-    new Date().toISOString().slice(0, 7) // Current month YYYY-MM
+    new Date().toISOString().slice(0, 7) // YYYY-MM
   );
   const [selectedTab, setSelectedTab] = useState('overview');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
-  // Statistics
   const [stats, setStats] = useState({
     totalHadir: 0,
     totalTerlambat: 0,
@@ -83,21 +84,22 @@ export default function AbsensiKaryawanDetailPage() {
 
   useEffect(() => {
     loadKaryawanData();
-  }, [params.karyawan_id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [karyawan_id]);
 
   useEffect(() => {
     if (karyawan) {
       loadAbsensiData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [karyawan, selectedMonth]);
 
   const loadKaryawanData = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.getKaryawanById(Number(params.karyawan_id));
+      const response = await apiClient.getKaryawanById(Number(karyawan_id));
       setKaryawan(response.data);
     } catch (error: any) {
-      console.error('Error loading karyawan:', error);
       setError('Gagal memuat data karyawan');
       toast({
         title: "Error",
@@ -118,34 +120,31 @@ export default function AbsensiKaryawanDetailPage() {
       const startDate = `${selectedMonth}-01`;
       const endDate = `${selectedMonth}-${new Date(Number(year), Number(month), 0).getDate()}`;
 
-      // Get absensi data for the selected month
       const response = await apiClient.getAbsensi({
-        karyawan_id: params.karyawan_id,
+        karyawan_id,   // ✅ sudah pasti string
         start_date: startDate,
         end_date: endDate,
       });
 
       const data = response.data.data || response.data || [];
       setAbsensiData(data);
-      
-      // Calculate statistics
+
       const hadir = data.filter((a: Absensi) => a.status === 'Hadir').length;
       const terlambat = data.filter((a: Absensi) => a.status === 'Terlambat').length;
       const izin = data.filter((a: Absensi) => a.status === 'Izin').length;
       const cuti = data.filter((a: Absensi) => a.status === 'Cuti').length;
       const alpha = data.filter((a: Absensi) => a.status === 'Alpha').length;
       const libur = data.filter((a: Absensi) => a.status === 'Libur').length;
-      
+
       const totalLembur = data.reduce((sum: number, a: Absensi) => sum + (a.jam_lembur || 0), 0);
       const totalGajiTambahan = data.reduce((sum: number, a: Absensi) => sum + (a.total_gaji_tambahan || 0), 0);
-      
-      // Calculate working days (exclude weekends and holidays)
-      const totalHariKerja = data.filter((a: Absensi) => 
+
+      const totalHariKerja = data.filter((a: Absensi) =>
         a.jenis_hari === 'weekday' && a.status !== 'Libur'
       ).length;
-      
-      const persentaseKehadiran = totalHariKerja > 0 
-        ? Math.round(((hadir + terlambat) / totalHariKerja) * 100) 
+
+      const persentaseKehadiran = totalHariKerja > 0
+        ? Math.round(((hadir + terlambat) / totalHariKerja) * 100)
         : 0;
 
       setStats({
@@ -155,12 +154,11 @@ export default function AbsensiKaryawanDetailPage() {
         totalCuti: cuti,
         totalAlpha: alpha,
         totalLibur: libur,
-        totalLembur: totalLembur,
-        totalGajiTambahan: totalGajiTambahan,
-        persentaseKehadiran: persentaseKehadiran,
+        totalLembur,
+        totalGajiTambahan,
+        persentaseKehadiran,
       });
     } catch (error: any) {
-      console.error('Error loading absensi:', error);
       setError('Gagal memuat data absensi');
       toast({
         title: "Error",

@@ -21,7 +21,7 @@ import { toast } from '@/hooks/use-toast';
 
 import { Save, ArrowLeft, AlertCircle } from 'lucide-react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api';
 
 type Departemen = { departemen_id: number; nama_departemen: string };
 type Jabatan = { jabatan_id: number; nama_jabatan: string };

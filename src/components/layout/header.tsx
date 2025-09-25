@@ -1,13 +1,14 @@
+// src/components/layout/header.tsx - Complete version
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { getInitials, cn } from '@/lib/utils';
+import { cn, getInitials } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,24 +36,24 @@ import {
   Clock,
   X,
   ArrowRight,
-  CommandIcon as Command
+  Command as CommandIcon,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import Cookies from 'js-cookie';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+import { apiClient } from '@/lib/api';
 
 interface HeaderProps {
   onMenuClick: () => void;
 }
 
+type SearchResultType = 'employee' | 'department' | 'menu';
+
 interface SearchResult {
   id: string;
-  type: 'employee' | 'department' | 'menu';
+  type: SearchResultType;
   title: string;
   subtitle?: string;
   description?: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   href: string;
   badge?: string;
 }
@@ -61,14 +62,10 @@ interface Employee {
   karyawan_id: number;
   nik: string;
   nama_lengkap: string;
-  email: string;
-  departemenSaatIni?: {
-    nama_departemen: string;
-  };
-  jabatanSaatIni?: {
-    nama_jabatan: string;
-  };
-  status: string;
+  email?: string;
+  status?: string;
+  departemenSaatIni?: { nama_departemen: string };
+  jabatanSaatIni?: { nama_jabatan: string };
 }
 
 interface Department {
@@ -84,7 +81,7 @@ const menuItems: SearchResult[] = [
     title: 'Dashboard',
     description: 'Halaman utama dengan ringkasan data',
     icon: <BarChart3 className="h-4 w-4" />,
-    href: '/dashboard'
+    href: '/dashboard',
   },
   {
     id: 'employees',
@@ -92,7 +89,7 @@ const menuItems: SearchResult[] = [
     title: 'Karyawan',
     description: 'Kelola data karyawan',
     icon: <Users className="h-4 w-4" />,
-    href: '/karyawan'
+    href: '/karyawan',
   },
   {
     id: 'attendance',
@@ -100,7 +97,7 @@ const menuItems: SearchResult[] = [
     title: 'Absensi',
     description: 'Monitoring kehadiran karyawan',
     icon: <Clock className="h-4 w-4" />,
-    href: '/absensi'
+    href: '/absensi',
   },
   {
     id: 'payroll',
@@ -108,7 +105,7 @@ const menuItems: SearchResult[] = [
     title: 'Penggajian',
     description: 'Proses dan kelola gaji karyawan',
     icon: <CreditCard className="h-4 w-4" />,
-    href: '/payroll'
+    href: '/payroll',
   },
   {
     id: 'departments',
@@ -116,7 +113,7 @@ const menuItems: SearchResult[] = [
     title: 'Departemen',
     description: 'Kelola departemen perusahaan',
     icon: <Building2 className="h-4 w-4" />,
-    href: '/master/departemen'
+    href: '/master/departemen',
   },
   {
     id: 'schedule',
@@ -124,7 +121,7 @@ const menuItems: SearchResult[] = [
     title: 'Jadwal Shift',
     description: 'Atur jadwal kerja karyawan',
     icon: <Calendar className="h-4 w-4" />,
-    href: '/schedule'
+    href: '/schedule',
   },
   {
     id: 'reports',
@@ -132,7 +129,7 @@ const menuItems: SearchResult[] = [
     title: 'Laporan',
     description: 'Laporan dan analisis data',
     icon: <FileText className="h-4 w-4" />,
-    href: '/reports'
+    href: '/reports',
   },
   {
     id: 'settings',
@@ -140,240 +137,116 @@ const menuItems: SearchResult[] = [
     title: 'Pengaturan',
     description: 'Konfigurasi sistem',
     icon: <Settings className="h-4 w-4" />,
-    href: '/settings'
-  }
+    href: '/settings',
+  },
 ];
 
 export function Header({ onMenuClick }: HeaderProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
-  
+
+  // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<number | null>(null);
 
+  // Data sources
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Demo notifications (ganti dengan API bila sudah ada)
   const [notifications] = useState([
-    {
-      id: 1,
-      title: 'Absensi Terlambat',
-      message: '5 karyawan terlambat hari ini',
-      type: 'warning',
-      time: '5 menit lalu',
-    },
-    {
-      id: 2,
-      title: 'Payroll Generated',
-      message: 'Gaji bulan ini telah digenerate',
-      type: 'success',
-      time: '1 jam lalu',
-    },
+    { id: 1, title: 'Absensi Terlambat', message: '5 karyawan terlambat hari ini', type: 'warning' as const, time: '5 menit lalu' },
+    { id: 2, title: 'Payroll Generated', message: 'Gaji bulan ini telah digenerate', type: 'success' as const, time: '1 jam lalu' },
   ]);
 
-  // Load data for search
+  // Load lists for search
   useEffect(() => {
-    loadEmployees();
-    loadDepartments();
+    (async () => {
+      try {
+        const [empRes, deptRes] = await Promise.all([
+          apiClient.getKaryawan(),
+          apiClient.getDepartemen(),
+        ]);
+
+        const empRaw = empRes.data || [];
+        const deptRaw = deptRes.data || [];
+
+        // Jika backend kirim {data: [...]}, fallback:
+        const empList: Employee[] = Array.isArray(empRaw?.data) ? empRaw.data : empRaw;
+        const deptList: Department[] = Array.isArray(deptRaw?.data) ? deptRaw.data : deptRaw;
+
+        setEmployees(
+          empList.filter((e) => (e.status ? e.status === 'Aktif' : true))
+        );
+        setDepartments(deptList);
+      } catch (err) {
+        // silent fail for header
+        // console.error('Header data load error', err);
+      }
+    })();
   }, []);
 
-  // Handle click outside to close search
+  // Click outside to close
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setShowSearchResults(false);
       }
-    }
-
+    };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Handle keyboard shortcuts
+  // Keyboard shortcuts
   useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
-        event.preventDefault();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k';
+      if (isCmdK) {
+        e.preventDefault();
         inputRef.current?.focus();
+        setShowSearchResults(true);
       }
-      
-      if (event.key === 'Escape') {
+      if (e.key === 'Escape') {
         setShowSearchResults(false);
         inputRef.current?.blur();
       }
-    }
-
+    };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const getApiHeaders = () => {
-    const token = Cookies.get('auth_token');
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    };
-  };
-
-  const loadEmployees = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/karyawan`, {
-        headers: getApiHeaders(),
-      });
-      if (response.ok) {
-        const data: Employee[] = await response.json();
-        setEmployees(data.filter(emp => emp.status === 'Aktif'));
-      }
-    } catch (error) {
-      console.error('Error loading employees:', error);
-    }
-  };
-
-  const loadDepartments = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/departemen`, {
-        headers: getApiHeaders(),
-      });
-      if (response.ok) {
-        const data: Department[] = await response.json();
-        setDepartments(data);
-      }
-    } catch (error) {
-      console.error('Error loading departments:', error);
-    }
-  };
-
-  const performSearch = (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    const results: SearchResult[] = [];
-    const lowerQuery = query.toLowerCase();
-
-    // Search employees
-    employees.forEach(emp => {
-      if (
-        emp.nama_lengkap.toLowerCase().includes(lowerQuery) ||
-        emp.nik.toLowerCase().includes(lowerQuery) ||
-        emp.email.toLowerCase().includes(lowerQuery) ||
-        emp.departemenSaatIni?.nama_departemen.toLowerCase().includes(lowerQuery) ||
-        emp.jabatanSaatIni?.nama_jabatan.toLowerCase().includes(lowerQuery)
-      ) {
-        results.push({
-          id: `emp-${emp.karyawan_id}`,
-          type: 'employee',
-          title: emp.nama_lengkap,
-          subtitle: emp.nik,
-          description: `${emp.jabatanSaatIni?.nama_jabatan || ''} - ${emp.departemenSaatIni?.nama_departemen || ''}`,
-          icon: <User className="h-4 w-4" />,
-          href: `/karyawan/${emp.karyawan_id}`,
-          badge: emp.status
-        });
-      }
-    });
-
-    // Search departments
-    departments.forEach(dept => {
-      if (dept.nama_departemen.toLowerCase().includes(lowerQuery)) {
-        results.push({
-          id: `dept-${dept.departemen_id}`,
-          type: 'department',
-          title: dept.nama_departemen,
-          subtitle: 'Departemen',
-          description: `${dept.karyawan_count || 0} karyawan`,
-          icon: <Building2 className="h-4 w-4" />,
-          href: `/master/departemen?highlight=${dept.departemen_id}`,
-          badge: 'Departemen'
-        });
-      }
-    });
-
-    // Search menu items
-    menuItems.forEach(item => {
-      if (
-        item.title.toLowerCase().includes(lowerQuery) ||
-        item.description?.toLowerCase().includes(lowerQuery)
-      ) {
-        results.push(item);
-      }
-    });
-
-    // Sort results by relevance
-    results.sort((a, b) => {
-      const aExact = a.title.toLowerCase() === lowerQuery;
-      const bExact = b.title.toLowerCase() === lowerQuery;
-      if (aExact && !bExact) return -1;
-      if (!aExact && bExact) return 1;
-      
-      const aStarts = a.title.toLowerCase().startsWith(lowerQuery);
-      const bStarts = b.title.toLowerCase().startsWith(lowerQuery);
-      if (aStarts && !bStarts) return -1;
-      if (!aStarts && bStarts) return 1;
-      
-      return a.title.localeCompare(b.title);
-    });
-
-    setSearchResults(results.slice(0, 8)); // Limit to 8 results
-    setIsSearching(false);
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    setShowSearchResults(true);
-    
-    // Debounce search
-    const timeoutId = setTimeout(() => {
-      performSearch(query);
-    }, 300);
-
-    return () => clearTimeout(timeoutId);
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchResults.length > 0) {
-      router.push(searchResults[0].href);
-      setShowSearchResults(false);
-      setSearchQuery('');
-    }
-  };
-
-  const handleResultClick = (result: SearchResult) => {
-    router.push(result.href);
-    setShowSearchResults(false);
-    setSearchQuery('');
-  };
-
-  const clearSearch = () => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearchResults(false);
-  };
-
   const getResultIcon = (result: SearchResult) => {
     switch (result.type) {
       case 'employee':
-        return <div className="p-1.5 rounded-md bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300"><User className="h-3 w-3" /></div>;
+        return (
+          <div className="p-1.5 rounded-md bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300">
+            <User className="h-3 w-3" />
+          </div>
+        );
       case 'department':
-        return <div className="p-1.5 rounded-md bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300"><Building2 className="h-3 w-3" /></div>;
+        return (
+          <div className="p-1.5 rounded-md bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-300">
+            <Building2 className="h-3 w-3" />
+          </div>
+        );
       case 'menu':
-        return <div className="p-1.5 rounded-md bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300">{result.icon}</div>;
+        return (
+          <div className="p-1.5 rounded-md bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-300">
+            {result.icon}
+          </div>
+        );
       default:
         return result.icon;
     }
   };
 
-  const getRoleBadgeColor = (role: string) => {
+  const getRoleBadgeColor = (role?: string) => {
     switch (role) {
       case 'it_dev':
         return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
@@ -388,7 +261,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     }
   };
 
-  const getRoleLabel = (role: string) => {
+  const getRoleLabel = (role?: string) => {
     switch (role) {
       case 'it_dev':
         return 'IT Developer';
@@ -399,8 +272,114 @@ export function Header({ onMenuClick }: HeaderProps) {
       case 'karyawan':
         return 'Karyawan';
       default:
-        return role;
+        return role || 'User';
     }
+  };
+
+  // Search core (no debounce here)
+  const performSearch = useCallback(
+    (query: string) => {
+      if (!query.trim()) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      const lower = query.toLowerCase();
+      const results: SearchResult[] = [];
+
+      // Employees
+      employees.forEach((emp) => {
+        const hits =
+          emp.nama_lengkap?.toLowerCase().includes(lower) ||
+          emp.nik?.toLowerCase().includes(lower) ||
+          emp.email?.toLowerCase().includes(lower) ||
+          emp.departemenSaatIni?.nama_departemen?.toLowerCase().includes(lower) ||
+          emp.jabatanSaatIni?.nama_jabatan?.toLowerCase().includes(lower);
+
+        if (hits) {
+          results.push({
+            id: `emp-${emp.karyawan_id}`,
+            type: 'employee',
+            title: emp.nama_lengkap,
+            subtitle: `NIK: ${emp.nik}`,
+            description: `${emp.jabatanSaatIni?.nama_jabatan || ''} - ${emp.departemenSaatIni?.nama_departemen || ''}`,
+            href: `/karyawan/${emp.karyawan_id}`,
+            badge: emp.status,
+          });
+        }
+      });
+
+      // Departments
+      departments.forEach((dept) => {
+        if (dept.nama_departemen.toLowerCase().includes(lower)) {
+          results.push({
+            id: `dept-${dept.departemen_id}`,
+            type: 'department',
+            title: dept.nama_departemen,
+            subtitle: 'Departemen',
+            description: `${dept.karyawan_count || 0} karyawan`,
+            href: `/master/departemen?highlight=${dept.departemen_id}`,
+            badge: 'Departemen',
+          });
+        }
+      });
+
+      // Menus
+      menuItems.forEach((item) => {
+        if (item.title.toLowerCase().includes(lower) || item.description?.toLowerCase().includes(lower)) {
+          results.push(item);
+        }
+      });
+
+      // Sort relevance
+      results.sort((a, b) => {
+        const la = a.title.toLowerCase();
+        const lb = b.title.toLowerCase();
+        const exactA = la === lower;
+        const exactB = lb === lower;
+        if (exactA && !exactB) return -1;
+        if (!exactA && exactB) return 1;
+
+        const startsA = la.startsWith(lower);
+        const startsB = lb.startsWith(lower);
+        if (startsA && !startsB) return -1;
+        if (!startsA && startsB) return 1;
+
+        return la.localeCompare(lb);
+      });
+
+      setSearchResults(results.slice(0, 8));
+      setIsSearching(false);
+    },
+    [employees, departments]
+  );
+
+  // Debounce search input
+  useEffect(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      performSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery, performSearch]);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchResults.length > 0) {
+      router.push(searchResults[0].href);
+      setShowSearchResults(false);
+      setSearchQuery('');
+    }
+  };
+
+  const handleResultClick = (result: SearchResult) => {
+    router.push(result.href);
+    setShowSearchResults(false);
+    setSearchQuery('');
   };
 
   return (
@@ -433,7 +412,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                   type="search"
                   placeholder="Cari karyawan, departemen, menu... (Ctrl+K)"
                   value={searchQuery}
-                  onChange={handleSearchChange}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   onFocus={() => setShowSearchResults(true)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 pl-9 pr-10 py-2 text-sm focus:border-tunas-blue-500 focus:outline-none focus:ring-2 focus:ring-tunas-blue-500/20"
                 />
@@ -442,15 +421,18 @@ export function Header({ onMenuClick }: HeaderProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={clearSearch}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}
                     className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
                   >
                     <X className="h-3 w-3" />
                   </Button>
                 )}
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  <kbd className="hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                    <Command className="h-3 w-3" />K
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1">
+                  <kbd className="inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+                    <CommandIcon className="h-3 w-3" />K
                   </kbd>
                 </div>
               </div>
@@ -467,20 +449,18 @@ export function Header({ onMenuClick }: HeaderProps) {
                   className="absolute top-full mt-2 w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg z-50 max-h-96 overflow-y-auto"
                 >
                   {isSearching ? (
-                    <div className="p-4 text-center text-sm text-gray-500">
-                      Mencari...
-                    </div>
+                    <div className="p-4 text-center text-sm text-gray-500">Mencari...</div>
                   ) : searchResults.length > 0 ? (
                     <>
                       <div className="p-2 text-xs text-gray-500 border-b border-gray-100 dark:border-gray-800">
                         {searchResults.length} hasil ditemukan
                       </div>
-                      {searchResults.map((result, index) => (
+                      {searchResults.map((result, idx) => (
                         <motion.button
                           key={result.id}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.05 }}
+                          transition={{ delay: idx * 0.05 }}
                           onClick={() => handleResultClick(result)}
                           className="w-full p-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
                         >
@@ -497,9 +477,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                               )}
                             </div>
                             {result.subtitle && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400">
-                                {result.subtitle}
-                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">{result.subtitle}</p>
                             )}
                             {result.description && (
                               <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
@@ -514,16 +492,14 @@ export function Header({ onMenuClick }: HeaderProps) {
                   ) : searchQuery ? (
                     <div className="p-4 text-center">
                       <p className="text-sm text-gray-500">Tidak ada hasil ditemukan</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Coba kata kunci yang berbeda
-                      </p>
+                      <p className="text-xs text-gray-400 mt-1">Coba kata kunci yang berbeda</p>
                     </div>
                   ) : (
                     <div className="p-4">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-2">
                         Menu Populer
                       </p>
-                      {menuItems.slice(0, 4).map((item, index) => (
+                      {menuItems.slice(0, 4).map((item) => (
                         <button
                           key={item.id}
                           onClick={() => handleResultClick(item)}
@@ -598,30 +574,14 @@ export function Header({ onMenuClick }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel>Notifikasi</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className="flex flex-col items-start p-4"
-              >
+            {notifications.map((n) => (
+              <DropdownMenuItem key={n.id} className="flex flex-col items-start p-4">
                 <div className="flex items-center gap-2 w-full">
-                  <div
-                    className={cn(
-                      'h-2 w-2 rounded-full',
-                      notification.type === 'warning'
-                        ? 'bg-yellow-500'
-                        : 'bg-green-500'
-                    )}
-                  />
-                  <span className="font-medium text-sm">
-                    {notification.title}
-                  </span>
-                  <span className="text-xs text-gray-500 ml-auto">
-                    {notification.time}
-                  </span>
+                  <div className={cn('h-2 w-2 rounded-full', n.type === 'warning' ? 'bg-yellow-500' : 'bg-green-500')} />
+                  <span className="font-medium text-sm">{n.title}</span>
+                  <span className="text-xs text-gray-500 ml-auto">{n.time}</span>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {notification.message}
-                </p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{n.message}</p>
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -644,23 +604,15 @@ export function Header({ onMenuClick }: HeaderProps) {
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-2">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium leading-none">
-                      {user.nama_lengkap}
-                    </p>
-                    <Badge
-                      className={cn('text-xs', getRoleBadgeColor(user.role))}
-                    >
+                    <p className="text-sm font-medium leading-none">{user.nama_lengkap}</p>
+                    <Badge className={cn('text-xs', getRoleBadgeColor(user.role))}>
                       {getRoleLabel(user.role)}
                     </Badge>
                   </div>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {user.email}
-                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>NIK: {user.nik}</span>
-                    {user.departemenSaatIni && (
-                      <span>• {user.departemenSaatIni.nama_departemen}</span>
-                    )}
+                    {user.departemenSaatIni && <span>• {user.departemenSaatIni.nama_departemen}</span>}
                   </div>
                 </div>
               </DropdownMenuLabel>
@@ -678,10 +630,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-red-600 dark:text-red-400"
-                onClick={logout}
-              >
+              <DropdownMenuItem className="text-red-600 dark:text-red-400" onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Keluar</span>
               </DropdownMenuItem>

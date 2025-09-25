@@ -59,7 +59,9 @@ import {
   UserCheck,
   Info,
   Save,
-  X
+  X,
+  Filter,
+  RefreshCw
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subMonths, addDays, isWeekend, eachDayOfInterval } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -553,382 +555,26 @@ export default function PayrollPage() {
   return (
     <ProtectedRoute permission="process-payroll">
       <DashboardLayout>
-        <PageHeader
-          title="Penggajian Harian"
-          description="Perhitungan otomatis gaji harian berdasarkan kehadiran"
-          breadcrumbs={breadcrumbs}
-          action={
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={handleExportExcel}
-                disabled={payrollDetails.length === 0}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export Excel
-              </Button>
-              <Button 
-                onClick={handleSavePayroll}
-                disabled={isSaving || payrollDetails.length === 0}
-              >
-                {isSaving ? (
-                  <>
-                    <LoadingSpinner size="sm" className="mr-2" />
-                    Menyimpan...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Simpan Slip Gaji
-                  </>
-                )}
-              </Button>
-            </div>
-          }
-        />
-
-        {error && (
-          <Alert variant="destructive" className="mb-6">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Date Range and Filter Section */}
-        <Card className="mb-6">
-          <CardHeader>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <CardTitle>Pilih Periode & Filter</CardTitle>
-              
-              <div className="flex flex-wrap gap-2">
-                {/* Date Range Picker */}
-                <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "justify-start text-left font-normal w-[300px]",
-                        !dateRange && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarDays className="mr-2 h-4 w-4" />
-                      {dateRange?.from ? (
-                        dateRange.to ? (
-                          <>
-                            {format(dateRange.from, "dd MMM yyyy", { locale: id })} -{" "}
-                            {format(dateRange.to, "dd MMM yyyy", { locale: id })}
-                          </>
-                        ) : (
-                          format(dateRange.from, "dd MMM yyyy", { locale: id })
-                        )
-                      ) : (
-                        <span>Pilih rentang tanggal</span>
-                      )}
-                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="flex">
-                      <div className="border-r p-3 space-y-1 w-44">
-                        {dateRanges.map((range) => (
-                          <Button
-                            key={range.label}
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start text-left text-sm"
-                            onClick={() => handleQuickDateRange(range.getValue())}
-                          >
-                            {range.label}
-                          </Button>
-                        ))}
-                      </div>
-                      <div className="p-3">
-                        <CalendarComponent
-                          initialFocus
-                          mode="range"
-                          defaultMonth={dateRange?.from}
-                          selected={dateRange}
-                          onSelect={setDateRange}
-                          numberOfMonths={2}
-                          locale={id}
-                        />
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Department Filter */}
-                <Select value={selectedDepartemen} onValueChange={setSelectedDepartemen}>
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Departemen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Semua Departemen</SelectItem>
-                    {departemenList.map(dept => (
-                      <SelectItem key={dept.departemen_id} value={dept.departemen_id.toString()}>
-                        {dept.nama_departemen}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                  <Input
-                    placeholder="Cari nama atau NIK..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-9 w-[250px]"
-                  />
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Total Karyawan</p>
-                  <p className="text-xl font-bold">{summary.totalKaryawan}</p>
-                </div>
-                <Users className="h-5 w-5 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Hari Kerja</p>
-                  <p className="text-xl font-bold">{summary.totalHariKerja}</p>
-                </div>
-                <Calendar className="h-5 w-5 text-purple-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Gaji Pokok</p>
-                  <p className="text-lg font-bold">{formatCurrency(summary.totalGajiPokok)}</p>
-                </div>
-                <Wallet className="h-5 w-5 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Upah Lembur</p>
-                  <p className="text-lg font-bold">{formatCurrency(summary.totalUpahLembur)}</p>
-                </div>
-                <Clock className="h-5 w-5 text-orange-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Uang Makan</p>
-                  <p className="text-lg font-bold">{formatCurrency(summary.totalUangMakan)}</p>
-                </div>
-                <UserCheck className="h-5 w-5 text-cyan-500" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-green-50">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-600">Grand Total</p>
-                  <p className="text-xl font-bold text-green-600">{formatCurrency(summary.grandTotal)}</p>
-                </div>
-                <Calculator className="h-5 w-5 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Table */}
-        <Card>
-          <CardContent className="p-0">
-            {isCalculating ? (
-              <div className="flex items-center justify-center h-64">
-                <LoadingSpinner size="lg" />
-                <span className="ml-2">Menghitung payroll...</span>
-              </div>
-            ) : filteredDetails.length === 0 ? (
-              <div className="text-center py-12">
-                <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500">Tidak ada data payroll</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {dateRange?.from && dateRange?.to
-                    ? "Tidak ada karyawan harian atau data absensi untuk periode ini"
-                    : "Silakan pilih rentang tanggal"}
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-gray-50">
-                    <TableRow>
-                      <TableHead className="w-[50px] sticky left-0 bg-gray-50">
-                        <Checkbox
-                          checked={selectedKaryawan.length === filteredDetails.length && filteredDetails.length > 0}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedKaryawan(filteredDetails.map(d => d.karyawan_id));
-                            } else {
-                              setSelectedKaryawan([]);
-                            }
-                          }}
-                        />
-                      </TableHead>
-                      <TableHead className="sticky left-[50px] bg-gray-50 z-10">No</TableHead>
-                      <TableHead className="sticky left-[100px] bg-gray-50 z-10 min-w-[100px]">NIK</TableHead>
-                      <TableHead className="sticky left-[200px] bg-gray-50 z-10 min-w-[200px]">Nama</TableHead>
-                      <TableHead>Departemen</TableHead>
-                      <TableHead className="text-center">Hari Kerja</TableHead>
-                      <TableHead className="text-center">Hadir</TableHead>
-                      <TableHead className="text-center">Gaji Pokok</TableHead>
-                      <TableHead className="text-center">Week</TableHead>
-                      <TableHead className="text-center">Jam Pertama Lembur</TableHead>
-                      <TableHead className="text-center">Jam Kedua Lembur</TableHead>
-                      <TableHead className="text-center">Jam Lembur Sabtu</TableHead>
-                      <TableHead className="text-center">Jam Lembur Minggu</TableHead>
-                      <TableHead className="text-center">Jam Lembur Libur</TableHead>
-                      <TableHead className="text-center bg-blue-50">Upah</TableHead>
-                      <TableHead className="text-center bg-green-50">Upah Lembur Weekday</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredDetails.map((item, index) => (
-                      <TableRow key={item.karyawan_id} className="hover:bg-gray-50">
-                        <TableCell className="sticky left-0 bg-white">
-                          <Checkbox
-                            checked={selectedKaryawan.includes(item.karyawan_id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedKaryawan([...selectedKaryawan, item.karyawan_id]);
-                              } else {
-                                setSelectedKaryawan(selectedKaryawan.filter(id => id !== item.karyawan_id));
-                              }
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell className="sticky left-[50px] bg-white z-10">{index + 1}</TableCell>
-                        <TableCell className="sticky left-[100px] bg-white z-10 font-medium">{item.nik}</TableCell>
-                        <TableCell className="sticky left-[200px] bg-white z-10">
-                          <div>
-                            <p className="font-medium">{item.nama_lengkap}</p>
-                            <p className="text-xs text-gray-500">{item.kategori_gaji}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{item.departemen}</TableCell>
-                        <TableCell className="text-center">{item.total_hari_kerja}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex flex-col">
-                            <span className="font-medium">{item.total_hadir}/{item.total_hari_kerja}</span>
-                            {item.total_terlambat > 0 && (
-                              <span className="text-xs text-yellow-600">T: {item.total_terlambat}</span>
-                            )}
-                            {item.total_alpha > 0 && (
-                              <span className="text-xs text-red-600">A: {item.total_alpha}</span>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(item.gaji_pokok)}</TableCell>
-                        <TableCell className="text-center">{item.total_hadir}</TableCell>
-                        <TableCell className="text-center">{toNum(item.jam_lembur_pertama).toFixed(1)}</TableCell>
-                        <TableCell className="text-center">{toNum(item.jam_lembur_kedua).toFixed(1)}</TableCell>
-                        <TableCell className="text-center">{toNum(item.jam_lembur_sabtu).toFixed(1)}</TableCell>
-                        <TableCell className="text-center">{toNum(item.jam_lembur_minggu).toFixed(1)}</TableCell>
-                        <TableCell className="text-center">{toNum(item.jam_lembur_libur).toFixed(1)}</TableCell>
-                        <TableCell className="text-right font-medium bg-blue-50">{formatCurrency(item.uang_makan)}</TableCell>
-                        <TableCell className="text-right font-medium bg-green-50">{formatCurrency(item.upah_lembur_weekday)}</TableCell>
-                      </TableRow>
-                    ))}
-                    
-                    {/* Total Row */}
-                    <TableRow className="bg-gray-100 font-bold">
-                      <TableCell colSpan={7} className="text-right">TOTAL</TableCell>
-                      <TableCell className="text-right">{formatCurrency(summary.totalGajiPokok)}</TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.total_hadir), 0)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.jam_lembur_pertama), 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.jam_lembur_kedua), 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.jam_lembur_sabtu), 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.jam_lembur_minggu), 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {filteredDetails.reduce((sum, d) => sum + toNum(d.jam_lembur_libur), 0).toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-right bg-blue-100">
-                        {formatCurrency(summary.totalUangMakan)}
-                      </TableCell>
-                      <TableCell className="text-right bg-green-100">
-                        {formatCurrency(filteredDetails.reduce((sum, d) => sum + toNum(d.upah_lembur_weekday), 0))}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Selected Info Bar */}
-        {selectedKaryawan.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 z-50">
-            <div className="max-w-7xl mx-auto flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Badge variant="secondary" className="text-lg">
-                  {selectedKaryawan.length} Karyawan Dipilih
-                </Badge>
-                <div className="text-sm text-gray-600">
-                  Total Gaji: <span className="font-bold text-lg">
-                    {formatCurrency(
-                      payrollDetails
-                        .filter(d => selectedKaryawan.includes(d.karyawan_id))
-                        .reduce((sum, d) => sum + toNum(d.total_gaji), 0)
-                    )}
-                  </span>
-                </div>
-              </div>
+        <div className="min-h-screen bg-gray-50">
+          <PageHeader
+            title="Penggajian Harian"
+            description="Perhitungan otomatis gaji harian berdasarkan kehadiran"
+            breadcrumbs={breadcrumbs}
+            action={
               <div className="flex gap-2">
                 <Button 
                   variant="outline" 
+                  onClick={handleExportExcel}
+                  disabled={payrollDetails.length === 0}
                   size="sm"
-                  onClick={() => setSelectedKaryawan([])}
                 >
-                  <X className="h-4 w-4 mr-1" />
-                  Batalkan
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
                 </Button>
                 <Button 
-                  size="sm"
                   onClick={handleSavePayroll}
-                  disabled={isSaving}
+                  disabled={isSaving || payrollDetails.length === 0}
+                  size="sm"
                 >
                   {isSaving ? (
                     <>
@@ -938,38 +584,484 @@ export default function PayrollPage() {
                   ) : (
                     <>
                       <Save className="h-4 w-4 mr-2" />
-                      Simpan {selectedKaryawan.length} Slip Gaji
+                      Simpan
                     </>
                   )}
                 </Button>
               </div>
-            </div>
-          </div>
-        )}
+            }
+          />
 
-        {/* Info Alert */}
-        {dateRange?.from && dateRange?.to && payrollDetails.length > 0 && (
-          <Alert className="mt-4">
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Periode:</strong> {format(dateRange.from, 'dd MMMM yyyy', { locale: id })} - {format(dateRange.to, 'dd MMMM yyyy', { locale: id })}
-              <br />
-              <strong>Perhitungan:</strong> Gaji Pokok (Tarif Harian × Hari Hadir) + Upah Lembur + Premi + Uang Makan - Potongan
-              <br />
-              {settings ? (
-                <> 
-                  <strong>Setting Aktif:</strong> Tarif default {formatCurrency(settings.tarif_harian_default)}, Jam kerja/hari {settings.jam_kerja_per_hari}.<br />
-                  Lembur: 1st {settings.lembur_weekday_first_multiplier}x | next {settings.lembur_weekday_next_multiplier}x | Sabtu {settings.lembur_sabtu_multiplier}x | Minggu {settings.lembur_minggu_multiplier}x | Libur {settings.lembur_libur_multiplier}x.<br />
-                  Premi (≥{settings.premi_kehadiran_min_hadir} hadir): {formatCurrency(settings.premi_kehadiran_nominal)} | Uang makan/hadir: {formatCurrency(settings.uang_makan_per_hadir)} | BPJS: {formatCurrency(settings.potongan_bpjs_flat)}
-                </>
-              ) : (
-                <>
-                  <strong>Tarif Lembur:</strong> Jam Pertama 1.5x | Jam Kedua 2x | Sabtu 2x | Minggu 3x | Libur 3x
-                </>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
+          <div className="max-w-full px-4 sm:px-6 lg:px-8 pb-8">
+            {error && (
+              <Alert variant="destructive" className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Compact Filter Section */}
+            <Card className="mb-6">
+              <CardContent className="p-4">
+                <div className="flex flex-col lg:flex-row gap-4">
+                  {/* Date Range Picker - More compact */}
+                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "justify-start text-left font-normal min-w-[250px]",
+                          !dateRange && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarDays className="mr-2 h-4 w-4" />
+                        {dateRange?.from ? (
+                          dateRange.to ? (
+                            <>
+                              {format(dateRange.from, "dd/MM", { locale: id })} -{" "}
+                              {format(dateRange.to, "dd/MM/yy", { locale: id })}
+                            </>
+                          ) : (
+                            format(dateRange.from, "dd/MM/yyyy", { locale: id })
+                          )
+                        ) : (
+                          <span>Pilih periode</span>
+                        )}
+                        <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <div className="flex">
+                        <div className="border-r p-3 space-y-1 w-36">
+                          {dateRanges.map((range) => (
+                            <Button
+                              key={range.label}
+                              variant="ghost"
+                              size="sm"
+                              className="w-full justify-start text-left text-xs"
+                              onClick={() => handleQuickDateRange(range.getValue())}
+                            >
+                              {range.label}
+                            </Button>
+                          ))}
+                        </div>
+                        <div className="p-3">
+                          <CalendarComponent
+                            initialFocus
+                            mode="range"
+                            defaultMonth={dateRange?.from}
+                            selected={dateRange}
+                            onSelect={setDateRange}
+                            numberOfMonths={2}
+                            locale={id}
+                          />
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Department Filter */}
+                  <Select value={selectedDepartemen} onValueChange={setSelectedDepartemen}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Departemen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Semua Departemen</SelectItem>
+                      {departemenList.map(dept => (
+                        <SelectItem key={dept.departemen_id} value={dept.departemen_id.toString()}>
+                          {dept.nama_departemen}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Search */}
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Cari nama atau NIK..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  {/* Refresh Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={calculatePayrollDetails}
+                    disabled={isCalculating}
+                  >
+                    <RefreshCw className={cn("h-4 w-4", isCalculating && "animate-spin")} />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Compact Summary Cards */}
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-6">
+              <Card>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Karyawan</p>
+                      <p className="text-lg font-bold">{summary.totalKaryawan}</p>
+                    </div>
+                    <Users className="h-4 w-4 text-blue-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Hari Kerja</p>
+                      <p className="text-lg font-bold">{summary.totalHariKerja}</p>
+                    </div>
+                    <Calendar className="h-4 w-4 text-purple-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Gaji Pokok</p>
+                      <p className="text-sm font-bold">{formatCurrency(summary.totalGajiPokok)}</p>
+                    </div>
+                    <Wallet className="h-4 w-4 text-green-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Upah Lembur</p>
+                      <p className="text-sm font-bold">{formatCurrency(summary.totalUpahLembur)}</p>
+                    </div>
+                    <Clock className="h-4 w-4 text-orange-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Uang Makan</p>
+                      <p className="text-sm font-bold">{formatCurrency(summary.totalUangMakan)}</p>
+                    </div>
+                    <UserCheck className="h-4 w-4 text-cyan-500" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Grand Total</p>
+                      <p className="text-lg font-bold text-green-600">{formatCurrency(summary.grandTotal)}</p>
+                    </div>
+                    <Calculator className="h-4 w-4 text-green-600" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Improved Main Table */}
+            <Card>
+              <CardContent className="p-0">
+                {isCalculating ? (
+                  <div className="flex items-center justify-center h-64">
+                    <LoadingSpinner size="lg" />
+                    <span className="ml-2">Menghitung payroll...</span>
+                  </div>
+                ) : filteredDetails.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Wallet className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                    <p className="text-gray-500">Tidak ada data payroll</p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {dateRange?.from && dateRange?.to
+                        ? "Tidak ada karyawan harian atau data absensi untuk periode ini"
+                        : "Silakan pilih rentang tanggal"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    {/* Mobile Card View */}
+                    <div className="block md:hidden p-4 space-y-4">
+                      {filteredDetails.map((item, index) => (
+                        <Card key={item.karyawan_id} className="border border-gray-200">
+                          <CardContent className="p-4">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={selectedKaryawan.includes(item.karyawan_id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedKaryawan([...selectedKaryawan, item.karyawan_id]);
+                                    } else {
+                                      setSelectedKaryawan(selectedKaryawan.filter(id => id !== item.karyawan_id));
+                                    }
+                                  }}
+                                />
+                                <div>
+                                  <p className="font-medium text-sm">{item.nama_lengkap}</p>
+                                  <p className="text-xs text-gray-500">{item.nik} • {item.departemen}</p>
+                                </div>
+                              </div>
+                              <Badge variant={item.kategori_gaji === 'Harian' ? 'default' : 'secondary'} className="text-xs px-2 py-0">
+                                {item.kategori_gaji}
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                              <div>
+                                <p className="text-xs text-gray-600">Kehadiran</p>
+                                <p className="font-medium">{item.total_hadir}/{item.total_hari_kerja}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600">Total Lembur</p>
+                                <p className="font-medium">{toNum(item.total_jam_lembur).toFixed(1)} jam</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600">Gaji Pokok</p>
+                                <p className="font-medium">{formatCurrency(item.gaji_pokok)}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-600">Total Gaji</p>
+                                <p className="font-bold text-green-600">{formatCurrency(item.total_gaji)}</p>
+                              </div>
+                            </div>
+                            
+                            {/* Additional details in collapsible format */}
+                            <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-3 gap-2 text-xs">
+                              <div className="text-center">
+                                <p className="text-gray-600">Lembur WD</p>
+                                <p className="font-medium">{formatCurrency(item.upah_lembur_weekday)}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-gray-600">Lembur WE</p>
+                                <p className="font-medium">{formatCurrency(item.upah_lembur_weekend)}</p>
+                              </div>
+                              <div className="text-center">
+                                <p className="text-gray-600">Uang Makan</p>
+                                <p className="font-medium">{formatCurrency(item.uang_makan)}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block">
+                      <Table>
+                        <TableHeader className="bg-gray-50/80 sticky top-0 z-10">
+                          <TableRow>
+                            <TableHead className="w-[40px] sticky left-0 bg-gray-50 z-20">
+                              <Checkbox
+                                checked={selectedKaryawan.length === filteredDetails.length && filteredDetails.length > 0}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedKaryawan(filteredDetails.map(d => d.karyawan_id));
+                                  } else {
+                                    setSelectedKaryawan([]);
+                                  }
+                                }}
+                              />
+                            </TableHead>
+                            <TableHead className="sticky left-[40px] bg-gray-50 z-20 w-[60px]">No</TableHead>
+                            <TableHead className="sticky left-[100px] bg-gray-50 z-20 min-w-[200px]">Karyawan</TableHead>
+                            <TableHead className="min-w-[120px]">Departemen</TableHead>
+                            <TableHead className="text-center w-[80px]">Hari Kerja</TableHead>
+                            <TableHead className="text-center w-[80px]">Hadir</TableHead>
+                            <TableHead className="text-right min-w-[120px]">Gaji Pokok</TableHead>
+                            <TableHead className="text-center w-[80px]">Lembur (jam)</TableHead>
+                            <TableHead className="text-right min-w-[120px]">Upah Lembur WD</TableHead>
+                            <TableHead className="text-right min-w-[120px]">Upah Lembur WE</TableHead>
+                            <TableHead className="text-right min-w-[100px]">Uang Makan</TableHead>
+                            <TableHead className="text-right min-w-[100px]">Potongan</TableHead>
+                            <TableHead className="text-right min-w-[140px] bg-green-50 sticky right-0">Total Gaji</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredDetails.map((item, index) => (
+                            <TableRow key={item.karyawan_id} className="hover:bg-gray-50/50">
+                              <TableCell className="sticky left-0 bg-white z-10">
+                                <Checkbox
+                                  checked={selectedKaryawan.includes(item.karyawan_id)}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedKaryawan([...selectedKaryawan, item.karyawan_id]);
+                                    } else {
+                                      setSelectedKaryawan(selectedKaryawan.filter(id => id !== item.karyawan_id));
+                                    }
+                                  }}
+                                />
+                              </TableCell>
+                              <TableCell className="sticky left-[40px] bg-white z-10 text-sm">{index + 1}</TableCell>
+                              <TableCell className="sticky left-[100px] bg-white z-10">
+                                <div className="min-w-[180px]">
+                                  <p className="font-medium text-sm">{item.nama_lengkap}</p>
+                                  <p className="text-xs text-gray-500">{item.nik}</p>
+                                  <Badge variant="outline" className="mt-1 text-xs">
+                                    {item.kategori_gaji}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-sm">{item.departemen}</TableCell>
+                              <TableCell className="text-center text-sm">{item.total_hari_kerja}</TableCell>
+                              <TableCell className="text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="font-medium text-sm">{item.total_hadir}</span>
+                                  <div className="flex gap-1 text-xs">
+                                    {item.total_terlambat > 0 && (
+                                      <Badge variant="secondary" className="text-xs px-1 py-0 h-4">T:{item.total_terlambat}</Badge>
+                                    )}
+                                    {item.total_alpha > 0 && (
+                                      <Badge variant="destructive" className="text-xs px-1 py-0 h-4">A:{item.total_alpha}</Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-sm">{formatCurrency(item.gaji_pokok)}</TableCell>
+                              <TableCell className="text-center text-sm">
+                                <div className="flex flex-col gap-1">
+                                  <span className="font-medium">{toNum(item.total_jam_lembur).toFixed(1)}</span>
+                                  <div className="text-xs text-gray-500">
+                                    WD: {(toNum(item.jam_lembur_pertama) + toNum(item.jam_lembur_kedua)).toFixed(1)}
+                                    <br />
+                                    WE: {(toNum(item.jam_lembur_sabtu) + toNum(item.jam_lembur_minggu) + toNum(item.jam_lembur_libur)).toFixed(1)}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium text-sm">{formatCurrency(item.upah_lembur_weekday)}</TableCell>
+                              <TableCell className="text-right font-medium text-sm">{formatCurrency(item.upah_lembur_weekend)}</TableCell>
+                              <TableCell className="text-right text-sm">{formatCurrency(item.uang_makan)}</TableCell>
+                              <TableCell className="text-right text-sm text-red-600">{formatCurrency(item.potongan_bpjs)}</TableCell>
+                              <TableCell className="text-right font-bold text-green-600 bg-green-50 sticky right-0 text-sm">
+                                {formatCurrency(item.total_gaji)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          
+                          {/* Summary Row */}
+                          <TableRow className="bg-gray-100 font-bold border-t-2">
+                            <TableCell colSpan={6} className="text-right text-sm">TOTAL ({filteredDetails.length} karyawan)</TableCell>
+                            <TableCell className="text-right text-sm">{formatCurrency(summary.totalGajiPokok)}</TableCell>
+                            <TableCell className="text-center text-sm">
+                              {filteredDetails.reduce((sum, d) => sum + toNum(d.total_jam_lembur), 0).toFixed(1)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {formatCurrency(filteredDetails.reduce((sum, d) => sum + toNum(d.upah_lembur_weekday), 0))}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {formatCurrency(filteredDetails.reduce((sum, d) => sum + toNum(d.upah_lembur_weekend), 0))}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {formatCurrency(summary.totalUangMakan)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm">
+                              {formatCurrency(summary.totalPotongan)}
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-green-600 bg-green-100 sticky right-0 text-sm">
+                              {formatCurrency(summary.grandTotal)}
+                            </TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Selected Info Bar - Fixed for mobile */}
+            {selectedKaryawan.length > 0 && (
+              <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 z-50">
+                <div className="max-w-7xl mx-auto">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
+                      <Badge variant="secondary" className="text-sm px-2 py-1">
+                        {selectedKaryawan.length} Dipilih
+                      </Badge>
+                      <div className="text-sm text-gray-600">
+                        Total: <span className="font-bold text-green-600">
+                          {formatCurrency(
+                            payrollDetails
+                              .filter(d => selectedKaryawan.includes(d.karyawan_id))
+                              .reduce((sum, d) => sum + toNum(d.total_gaji), 0)
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 w-full sm:w-auto">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => setSelectedKaryawan([])}
+                        className="flex-1 sm:flex-initial"
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Batal
+                      </Button>
+                      <Button 
+                        size="sm"
+                        onClick={handleSavePayroll}
+                        disabled={isSaving}
+                        className="flex-1 sm:flex-initial"
+                      >
+                        {isSaving ? (
+                          <>
+                            <LoadingSpinner size="sm" className="mr-2" />
+                            Menyimpan...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4 mr-2" />
+                            Simpan ({selectedKaryawan.length})
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Compact Info Alert */}
+            {dateRange?.from && dateRange?.to && payrollDetails.length > 0 && (
+              <Alert className="mt-4">
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <strong>Periode:</strong> {format(dateRange.from, 'dd/MM/yyyy', { locale: id })} - {format(dateRange.to, 'dd/MM/yyyy', { locale: id })}
+                      <br />
+                      <strong>Formula:</strong> Gaji Pokok + Upah Lembur + Premi + Uang Makan - Potongan
+                    </div>
+                    {settings && (
+                      <div className="text-xs text-gray-600">
+                        <strong>Setting:</strong> Tarif {formatCurrency(settings.tarif_harian_default)}/hari, {settings.jam_kerja_per_hari}h/hari
+                        <br />
+                        <strong>Lembur:</strong> 1st-{settings.lembur_weekday_first_multiplier}x, next-{settings.lembur_weekday_next_multiplier}x, Sabtu-{settings.lembur_sabtu_multiplier}x, Minggu-{settings.lembur_minggu_multiplier}x
+                        <br />
+                        <strong>Benefit:</strong> Premi {formatCurrency(settings.premi_kehadiran_nominal)} (≥{settings.premi_kehadiran_min_hadir}hr), Makan {formatCurrency(settings.uang_makan_per_hadir)}/hr, BPJS {formatCurrency(settings.potongan_bpjs_flat)}
+                      </div>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </div>
       </DashboardLayout>
     </ProtectedRoute>
   );
