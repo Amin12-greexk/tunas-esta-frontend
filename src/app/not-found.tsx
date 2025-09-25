@@ -16,9 +16,6 @@ export default function NotFound() {
         transition={{ duration: 0.5 }}
         className="text-center"
       >
-        <div className="flex justify-center mb-8">
-          <Logo size="lg" />
-        </div>
 
         <h1 className="text-8xl font-bold bg-gradient-to-r from-tunas-blue-600 to-tunas-green-600 bg-clip-text text-transparent">
           404

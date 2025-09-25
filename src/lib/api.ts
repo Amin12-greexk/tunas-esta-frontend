@@ -15,7 +15,7 @@ export const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+
 api.interceptors.request.use(
   (config) => {
     const token = Cookies.get('auth_token');
@@ -29,14 +29,14 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      
       Cookies.remove('auth_token');
       window.location.href = '/login';
     }
@@ -44,7 +44,7 @@ api.interceptors.response.use(
   }
 );
 
-// Define types for better type safety
+
 interface LoginCredentials {
   nik: string;
   password: string;
@@ -54,7 +54,7 @@ interface KaryawanData {
   nik: string;
   nama_lengkap: string;
   email: string;
-  // Add other properties as needed
+ 
 }
 
 interface DepartemenData {
@@ -80,6 +80,11 @@ interface AbsensiParams {
   status?: string;
   departemen?: string;
   q?: string;
+  limit?: number;                               // jika backend pakai 'limit'
+  page?: number;                                // halaman
+  per_page?: number;                            // kalau backend pakai paginate 'per_page'
+  sort?: 'created_at' | 'updated_at' | string;  // kunci sort
+  order?: 'asc' | 'desc';                       // arah sort
 }
 
 interface PayrollData {
@@ -102,7 +107,7 @@ interface SettingGajiData {
   tarif_lembur_staff_per_jam: number;
 }
 
-// API methods with proper typing
+
 export const apiClient = {
   // Auth
   login: (credentials: LoginCredentials) => 
